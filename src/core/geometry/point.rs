@@ -1,7 +1,7 @@
 use num;
+use crate::core::pbrt::*;
 use super::vector::{Vector3, Vector2};
 use std::ops::{Add, Mul, AddAssign, MulAssign, SubAssign, Sub, Div, DivAssign, Index, IndexMut, Neg};
-use num::ToPrimitive;
 
 pub type Float = f32;
 
@@ -43,6 +43,24 @@ impl<T> Point2<T> {
         where T: num::Float
     {
         Point2::new(self.x.abs(), self.y.abs())
+    }
+
+    pub fn distance(&self, p2: &Point2<T>) -> T
+        where T: num::Float
+    {
+        (*self - *p2).length()
+    }
+
+    pub fn distance_squared(&self, p2: &Point2<T>) -> T
+        where T: num::Float
+    {
+        (*self - *p2).length_squared()
+    }
+}
+
+impl Point2f {
+    pub fn lerp(&self, t: Float, p: &Self) -> Self {
+        lerp(t, *self, *p)
     }
 }
 
@@ -231,6 +249,26 @@ impl<T> Point3<T> {
         Point3::<T> {x, y, z}
     }
 
+    pub fn max(p1: &Self, p2: &Self) -> Self
+        where T: Ord + Copy
+    {
+        Point3::new(
+            std::cmp::max(p1.x, p2.x),
+            std::cmp::max(p1.y, p2.y),
+            std::cmp::max(p1.z, p2.z)
+        )
+    }
+
+    pub fn min(p1: &Self, p2: &Self) -> Self
+        where T: Ord + Copy
+    {
+        Point3::new(
+            std::cmp::min(p1.x, p2.x),
+            std::cmp::min(p1.y, p2.y),
+            std::cmp::min(p1.z, p2.z)
+        )
+    }
+
     pub fn has_nan(&self) -> bool
         where T: num::Float
     {
@@ -250,13 +288,51 @@ impl<T> Point3<T> {
     }
 
     pub fn abs(&self) -> Self
-        where T: num::Float
+        where T: num::Signed
     {
         Point3::<T> {
             x: self.x.abs(),
             y: self.y.abs(),
             z: self.z.abs()
         }
+    }
+
+    pub fn distance(&self, p2: &Point3<T>) -> T
+        where T: num::Float
+    {
+        (*self - *p2).length()
+    }
+
+    pub fn distance_squared(&self, p2: &Point3<T>) -> T
+        where T: num::Float
+    {
+        (*self - *p2).length_squared()
+    }
+
+    pub fn floor(&self) -> Self
+        where T: num::Float
+    {
+        Point3::new(self.x.floor(), self.y.floor(), self.z.floor())
+    }
+
+    pub fn ceil(&self) -> Self
+        where T: num::Float
+    {
+        Point3::new(self.x.ceil(), self.y.ceil(), self.z.ceil())
+
+    }
+
+    pub fn permutate(&self, x: usize, y: usize, z: usize) -> Self
+        where T: Copy
+    {
+        Point3::new(self[x], self[y], self[z])
+    }
+
+}
+
+impl Point3f {
+    pub fn lerp(&self, t: Float, p: &Self) -> Self {
+        lerp(t, *self, *p)
     }
 }
 

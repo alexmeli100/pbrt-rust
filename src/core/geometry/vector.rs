@@ -1,8 +1,10 @@
 use num;
 use super::point::{Point2, Point3};
 use std::ops::{Add, Mul, AddAssign, MulAssign, SubAssign, Sub, Div, DivAssign, Index, IndexMut, Neg};
+use num::Signed;
 
 pub type Float = f32;
+type Vector3f = Vector3<Float>;
 
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct Vector2<T> {
@@ -37,6 +39,30 @@ impl<T> Vector2<T> {
     where T: num::Float
     {
         Vector2::new(self.x.abs(), self.y.abs())
+    }
+
+    pub fn dot(&self, v: &Self) -> T
+        where T: Copy + Add<T, Output=T> + Mul<T, Output=T>
+    {
+        self.x * v.y + self.y * v.y
+    }
+
+    pub fn abs_dot(&self, v: &Self) -> T
+        where T: Copy + Signed
+    {
+        self.dot(v).abs()
+    }
+
+    pub fn min_component(&self) -> T
+        where T: num::Float
+    {
+        self.x.min(self.y)
+    }
+
+    pub fn max_component(&self) -> T
+        where T: num::Float
+    {
+        self.x.max(self.y)
     }
 }
 
@@ -225,11 +251,56 @@ impl<T> Vector3<T> {
             z: self.z.abs()
         }
     }
+
+    pub fn dot(&self, v: &Self) -> T
+    where T: Copy + Add<T, Output=T> + Mul<T, Output=T>
+    {
+        self.x * v.y + self.y * v.y + self.z * v.z
+    }
+
+    pub fn abs_dot(&self, v: &Self) -> T
+    where T: Copy + Signed
+    {
+        self.dot(v).abs()
+    }
+
+    pub fn permutate(&self, x: usize, y: usize, z: usize) -> Vector3<T>
+        where T: Copy
+    {
+        Vector3::new(self[x], self[y], self[z])
+    }
+
+    pub fn min_component(&self) -> T
+    where T: num::Float
+    {
+        self.x.min(self.y.min(self.z))
+    }
+
+    pub fn max_component(&self) -> T
+    where T: num::Float
+    {
+        self.x.max(self.y.max(self.z))
+    }
 }
 
-impl Vector3<Float> {
+impl Vector3f {
     pub fn normalize(&self) -> Self {
         *self / self.length()
+    }
+
+    pub fn cross(&self, v2: &Vector3f) -> Vector3f {
+        let v1x = self.x as f64;
+        let v1y = self.y as f64;
+        let v1z = self.z as f64;
+        let v2x = v2.x as f64;
+        let v2y = v2.y as f64;
+        let v2z = v2.z as f64;
+
+        Vector3f {
+            x: ((v1y * v2z) - (v1z * v2y)) as Float,
+            y: ((v1z * v2x) - (v1x * v2z)) as Float,
+            z: ((v1x * v2y) - (v1y * v2x)) as Float
+        }
     }
 }
 
@@ -390,4 +461,14 @@ impl<T> IndexMut<usize> for Vector3<T> {
             _ => panic!("Wrong argument. i >= 0 && i < 2")
         }
     }
+}
+
+pub fn vec3_coordinate_system(v1: &Vector3f, v2: &mut Vector3f, v3: &mut Vector3f) {
+    if v1.x.abs() > v1.y.abs() {
+        *v2 = Vector3f::new(-v1.z, 0.0, v1.x) / (v1.x*v1.x + v1.z*v1.z).sqrt()
+    } else {
+        *v2 = Vector3f::new(0.0, v1.z, -v1.y) / (v1.y*v1.y + v1.z*v1.z).sqrt()
+    }
+
+    *v3 = v1.cross(&*v2);
 }
