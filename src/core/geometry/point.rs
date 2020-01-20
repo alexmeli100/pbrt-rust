@@ -3,7 +3,6 @@ use crate::core::pbrt::*;
 use super::vector::{Vector3, Vector2};
 use std::ops::{Add, Mul, AddAssign, MulAssign, SubAssign, Sub, Div, DivAssign, Index, IndexMut, Neg};
 
-pub type Float = f32;
 
 pub type Point2f = Point2<Float>;
 pub type Point2i = Point2<isize>;
@@ -17,7 +16,7 @@ pub struct Point2<T> {
 }
 
 impl<T> Point2<T> {
-    fn new(x: T, y: T) -> Point2<T> {
+    pub fn new(x: T, y: T) -> Point2<T> {
         Point2::<T> {x, y}
     }
 

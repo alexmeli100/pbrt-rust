@@ -1,10 +1,14 @@
 use num;
 use super::point::{Point2, Point3};
+use super::normal::Normal3;
+use crate::core::pbrt::{Float};
 use std::ops::{Add, Mul, AddAssign, MulAssign, SubAssign, Sub, Div, DivAssign, Index, IndexMut, Neg};
 use num::Signed;
 
-pub type Float = f32;
-type Vector3f = Vector3<Float>;
+pub type Vector2i = Vector2<isize>;
+pub type Vector2f = Vector2<Float>;
+pub type Vector3i = Vector3<isize>;
+pub type Vector3f = Vector3<Float>;
 
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct Vector2<T> {
@@ -258,11 +262,17 @@ impl<T> Vector3<T> {
         self.x * v.y + self.y * v.y + self.z * v.z
     }
 
+    pub fn dot_norm(&self, n: &Normal3<T>) -> T
+    where T: Copy + Add<T, Output=T> + Mul<T, Output=T> { self.x * n.x + self.y * n.y + self.z * n.z }
+
     pub fn abs_dot(&self, v: &Self) -> T
     where T: Copy + Signed
     {
         self.dot(v).abs()
     }
+
+    pub fn abs_dot_norm(&self, n: &Normal3<T>) -> T
+    where T: Copy + Signed { self.dot_norm(n).abs() }
 
     pub fn permutate(&self, x: usize, y: usize, z: usize) -> Vector3<T>
         where T: Copy
@@ -280,6 +290,28 @@ impl<T> Vector3<T> {
     where T: num::Float
     {
         self.x.max(self.y.max(self.z))
+    }
+
+    pub fn face_foward(&self, v: &Self) -> Self
+        where T: Copy + PartialOrd + Add<T, Output=T> + Mul<T, Output=T> + Neg<Output=T>,
+              Float: From<T>
+    {
+        if Float::from(self.dot(v)) < 0 as Float {
+            -(*self)
+        } else {
+            *self
+        }
+    }
+
+    pub fn face_foward_vec(&self, n: &Normal3<T>) -> Self
+        where T: Copy + PartialOrd + Add<T, Output=T> + Mul<T, Output=T> + Neg<Output=T>,
+              Float: From<T>
+    {
+        if Float::from(self.dot_norm(n)) < 0 as Float {
+            -(*self)
+        } else {
+            *self
+        }
     }
 }
 
@@ -414,14 +446,14 @@ impl<T> MulAssign<T> for Vector3<T>
     }
 }
 
-impl Div<Float> for Vector3<Float> {
-    type Output = Vector3<Float>;
+impl Div<Float> for Vector3f {
+    type Output = Vector3f;
 
-    fn div(self, rhs: Float) -> Vector3<Float> {
+    fn div(self, rhs: Float) -> Vector3f {
         assert_ne!(0.0 as Float, rhs);
         let d = 1.0 as Float / rhs;
 
-        Vector3::<Float> {
+        Vector3f {
             x: self.x * d,
             y: self.y * d,
             z: self.z * d
@@ -463,12 +495,19 @@ impl<T> IndexMut<usize> for Vector3<T> {
     }
 }
 
+impl<T> From<Point3<T>> for Vector3<T> {
+    fn from(p: Point3<T>) -> Self {
+        Vector3::new(p.x, p.y, p.z)
+    }
+}
+
 pub fn vec3_coordinate_system(v1: &Vector3f, v2: &mut Vector3f, v3: &mut Vector3f) {
     if v1.x.abs() > v1.y.abs() {
         *v2 = Vector3f::new(-v1.z, 0.0, v1.x) / (v1.x*v1.x + v1.z*v1.z).sqrt()
     } else {
         *v2 = Vector3f::new(0.0, v1.z, -v1.y) / (v1.y*v1.y + v1.z*v1.z).sqrt()
     }
+
 
     *v3 = v1.cross(&*v2);
 }
