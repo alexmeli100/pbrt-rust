@@ -26,6 +26,24 @@ impl<T> Point2<T> {
         self.x.is_nan() || self.y.is_nan()
     }
 
+    pub fn max(&self, p2: &Self) -> Self
+        where T: Ord + Copy
+    {
+        Point2::new(
+            std::cmp::max(self.x, p2.x),
+            std::cmp::max(self.y, p2.y),
+        )
+    }
+
+    pub fn min(&self, p2: &Self) -> Self
+        where T: Ord + Copy
+    {
+        Point2::new(
+            std::cmp::min(self.x, p2.x),
+            std::cmp::min(self.y, p2.y),
+        )
+    }
+
     fn length_squared(&self) -> T
         where T: Copy + Add<T, Output=T> + Mul<T, Output=T>
     {
@@ -76,11 +94,11 @@ impl<T> Add for Point2<T>
     }
 }
 
-impl<T> Add<Vector2<T>> for Point2<T>
-where T: Copy + Add<T, Output=T> {
+impl<T, U> Add<Vector2<U>> for Point2<T>
+where T: Copy + Add<U, Output=T> {
     type Output = Point2<T>;
 
-    fn add(self, rhs: Vector2<T>) -> Point2<T> {
+    fn add(self, rhs: Vector2<U>) -> Point2<T> {
         Point2::new(self.x+rhs.x, self.y+rhs.y)
     }
 }
@@ -113,12 +131,12 @@ where T: Copy + Sub<T, Output=T>
     }
 }
 
-impl<T> Sub<Vector2<T>> for Point2<T>
-where T: Copy + Sub<T, Output=T>
+impl<T, U> Sub<Vector2<U>> for Point2<T>
+where T: Copy + Sub<U, Output=T>
 {
     type Output = Point2<T>;
 
-    fn sub(self, rhs: Vector2<T>) -> Point2<T> {
+    fn sub(self, rhs: Vector2<U>) -> Point2<T> {
         Point2::new(self.x-rhs.x, self.y-rhs.y)
     }
 }
@@ -248,23 +266,23 @@ impl<T> Point3<T> {
         Point3::<T> {x, y, z}
     }
 
-    pub fn max(p1: &Self, p2: &Self) -> Self
+    pub fn max(&self, p2: &Self) -> Self
         where T: Ord + Copy
     {
         Point3::new(
-            std::cmp::max(p1.x, p2.x),
-            std::cmp::max(p1.y, p2.y),
-            std::cmp::max(p1.z, p2.z)
+            std::cmp::max(self.x, p2.x),
+            std::cmp::max(self.y, p2.y),
+            std::cmp::max(self.z, p2.z)
         )
     }
 
-    pub fn min(p1: &Self, p2: &Self) -> Self
+    pub fn min(&self, p2: &Self) -> Self
         where T: Ord + Copy
     {
         Point3::new(
-            std::cmp::min(p1.x, p2.x),
-            std::cmp::min(p1.y, p2.y),
-            std::cmp::min(p1.z, p2.z)
+            std::cmp::min(self.x, p2.x),
+            std::cmp::min(self.y, p2.y),
+            std::cmp::min(self.z, p2.z)
         )
     }
 
@@ -349,11 +367,11 @@ impl<T> Add for Point3<T>
     }
 }
 
-impl<T> Add<Vector3<T>> for Point3<T>
-    where T: Copy + Add<T, Output=T> {
+impl<T, U> Add<Vector3<U>> for Point3<T>
+    where T: Copy + Add<U, Output=T> {
     type Output = Point3<T>;
 
-    fn add(self, rhs: Vector3<T>) -> Self {
+    fn add(self, rhs: Vector3<U>) -> Self {
         Point3::new(self.x+rhs.x, self.y+rhs.y, self.z+rhs.z)
     }
 }
@@ -393,12 +411,12 @@ impl<T> Sub for Point3<T>
     }
 }
 
-impl<T> Sub<Vector3<T>> for Point3<T>
-    where T: Copy + Sub<T, Output=T>
+impl<T, U> Sub<Vector3<U>> for Point3<T>
+    where T: Copy + Sub<U, Output=T>
 {
     type Output = Point3<T>;
 
-    fn sub(self, rhs: Vector3<T>) -> Point3<T> {
+    fn sub(self, rhs: Vector3<U>) -> Point3<T> {
         Point3::new(self.x-rhs.x, self.y-rhs.y, self.z-rhs.z)
     }
 }

@@ -12,3 +12,8 @@ pub fn lerp<T, S>(t: S, x: T, y: T) -> T
 
     x * (one - t) + y * t
 }
+
+#[inline(always)]
+pub fn radians(deg: Float) -> Float {
+    (std::f32::consts::PI / 180.0) as Float * deg
+}
