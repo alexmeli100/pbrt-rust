@@ -1,8 +1,12 @@
-use nalgebra::Matrix4;
+use nalgebra::{Matrix4};
 use crate::core::pbrt::*;
-use crate::core::geometry::vector::Vector3f;
-use crate::core::geometry::point::Point3f;
-use num::Zero;
+use crate::core::geometry::vector::*;
+use crate::core::geometry::point::*;
+use crate::core::geometry::normal::Normal3;
+use crate::core::geometry::ray::*;
+use crate::core::geometry::bounds::Bounds3f;
+use num::{Zero, One};
+use std::ops::{Mul, Add, Div};
 
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub struct Transform {
@@ -181,4 +185,109 @@ impl Transform {
 
         Self { m: camera_to_world.try_inverse().unwrap(), m_inv: camera_to_world}
     }
+
+    pub fn transform_point<T>(&self, p: &Point3<T>) -> Point3<T>
+        where T: Mul<Float, Output=T> + Add<T, Output=T> + Add<Float, Output=T> + Div<T, Output=T> + One + PartialEq + Copy + Zero
+    {
+        let x = p.x;
+        let y = p.y;
+        let z = p.z;
+
+        let xp = x*self.m[(0, 0)] + y*self.m[(0, 1)] + z*self.m[(0, 2)] + self.m[(0, 3)];
+        let yp = x*self.m[(1, 0)] + y*self.m[(1, 1)] + z*self.m[(1, 2)] + self.m[(1, 3)];
+        let zp = x*self.m[(2, 0)] + y*self.m[(2, 1)] + z*self.m[(2, 2)] + self.m[(2, 3)];
+        let wp = x*self.m[(3, 0)] + y*self.m[(3, 1)] + z*self.m[(3, 2)] + self.m[(3, 3)];
+
+        if wp == T::one() {
+            Point3::new(xp, yp, zp)
+        } else {
+            Point3::new(xp, yp, zp) / wp
+        }
+    }
+
+    pub fn transform_point_error<T>(&self, p: &Point3<T>, o_error: &mut Vector3<T>) -> Point3<T> {
+        unimplemented!()
+    }
+
+    pub fn transform_vector<T>(&self, v: &Vector3<T>) -> Vector3<T>
+        where T: Mul<Float, Output=T> + Add<T, Output=T>
+    {
+        let x = v.x;
+        let y = v.y;
+        let z = v.z;
+
+        Vector3::new(
+            x*self.m[(0, 0)] + y*self.m[(0, 1)] + z*self.m[(0, 2)],
+            x*self.m[(1, 0)] + y*self.m[(1, 1)] + z*self.m[(1, 2)],
+            x*self.m[(2, 0)] + y*self.m[(2, 1)] + z*self.m[(2, 2)]
+        )
+    }
+
+    pub fn transform_normal<T>(&self, n: &Normal3<T>) -> Normal3<T>
+        where T: Mul<Float, Output=T> + Add<T, Output=T>
+    {
+        let x = n.x;
+        let y = n.y;
+        let z = n.z;
+
+        Normal3::new(
+            x*self.m[(0, 0)] + y*self.m[(1, 0)] + z*self.m[(2, 0)],
+            x*self.m[(0, 1)] + y*self.m[(1, 1)] + z*self.m[(2, 1)],
+            x*self.m[(0, 2)] + y*self.m[(1, 2)] + z*self.m[(2, 2)]
+        )
+    }
+
+    pub fn transform_ray<'a>(&self, r: &'a Ray<'a>) -> Ray<'a> {
+        let mut o_error = Vector3f::default();
+        let mut o = self.transform_point_error(&r.o(), &mut o_error);
+        let d = self.transform_vector(&r.d());
+
+        let l_squared = d.length_squared();
+        let t_max = r.t_max();
+
+        if l_squared > 0.0 {
+            let dt = d.abs().dot(&o_error) / l_squared;
+            o += d * dt;
+            t_max -= dt;
+        }
+
+        Ray::new(&o, &d, t_max, r.time(), r.medium())
+    }
+
+    pub fn transform_bounds(&self, b: Bounds3f) -> Bounds3f {
+        let mut ret = Bounds3f::from_point(&self.transform_point(&Point3::new(b.p_min.x, b.p_min.y, b.p_min.z)));
+
+        ret = ret.union_point(&self.transform_point(&Point3::new(b.p_max.x, b.p_min.y, b.p_min.z)));
+        ret = ret.union_point(&self.transform_point(&Point3::new(b.p_min.x, b.p_max.y, b.p_min.z)));
+        ret = ret.union_point(&self.transform_point(&Point3::new(b.p_min.x, b.p_min.y, b.p_max.z)));
+        ret = ret.union_point(&self.transform_point(&Point3::new(b.p_min.x, b.p_max.y, b.p_max.z)));
+        ret = ret.union_point(&self.transform_point(&Point3::new(b.p_max.x, b.p_max.y, b.p_min.z)));
+        ret = ret.union_point(&self.transform_point(&Point3::new(b.p_max.x, b.p_min.y, b.p_max.z)));
+        ret = ret.union_point(&self.transform_point(&Point3::new(b.p_max.x, b.p_max.y, b.p_max.z)));
+
+        ret
+    }
+
+    fn swaps_handedness(&self) -> bool {
+        let det = self.m[(0, 0)] * (self.m[(1, 1)] * self.m[(2, 2)] - self.m[(1, 2)] * self.m[(2, 1)]) -
+                       self.m[(0, 1)] * (self.m[(1, 0)] * self.m[(2, 2)] - self.m[(1, 2)] * self.m[(2, 0)]) +
+                       self.m[(0, 2)] * (self.m[(1, 0)] * self.m[(2, 1)] - self.m[(1, 1)] * self.m[(2, 0)]);
+
+        det < 0.0
+    }
 }
+
+impl Mul for Transform {
+    type Output = Transform;
+
+    fn mul(self, other: Self) -> Self::Output {
+        Transform {
+            m: self.m * other.m,
+            m_inv: other.m_inv * self.m_inv
+        }
+    }
+}
+
+
+
+

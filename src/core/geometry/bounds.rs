@@ -35,6 +35,13 @@ where T: Bounded + Num + Copy
 impl<T> Bounds2<T>
 where T: Num + Copy
 {
+    pub fn from_point(p: &Point2<T>) -> Self {
+        Self {
+            p_min: *p,
+            p_max: *p
+        }
+    }
+
     pub fn from_points(p1: &Point2<T>, p2: &Point2<T>) -> Self
     where T: Ord
     {
@@ -239,13 +246,20 @@ impl Bounds2i {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Bounds3<T>
 where T: Num {
-    p_min: Point3<T>,
-    p_max: Point3<T>
+    pub p_min: Point3<T>,
+    pub p_max: Point3<T>
 }
 
 impl<T> Bounds3<T>
     where T: Num + Copy
 {
+    pub fn from_point(p: &Point3<T>) -> Self {
+        Self {
+            p_min: *p,
+            p_max: *p
+        }
+    }
+
     pub fn from_points(p1: Point3<T>, p2: Point3<T>) -> Self
         where T: Ord
     {
@@ -322,7 +336,7 @@ impl<T> Bounds3<T>
     }
 
     pub fn union_point(&self, p: &Point3<T>) -> Self
-        where T: Ord
+        where T: num::Float
     {
         Self {
             p_min: self.p_min.min(p),
@@ -331,7 +345,7 @@ impl<T> Bounds3<T>
     }
 
     pub fn union_bounds(&self, b: &Self) -> Self
-        where T: Ord
+        where T: num::Float
     {
         Self {
             p_min: self.p_min.min(&b.p_min),
@@ -340,7 +354,7 @@ impl<T> Bounds3<T>
     }
 
     pub fn intersect(&self, b: &Self) -> Self
-        where T: Ord
+        where T: num::Float
     {
         Self {
             p_min: self.p_min.max(&b.p_min),

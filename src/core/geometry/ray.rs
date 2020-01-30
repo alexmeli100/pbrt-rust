@@ -6,6 +6,9 @@ use crate::core::medium::Medium;
 pub trait  BaseRay {
     fn o(&self) -> Point3f;
     fn d(&self) -> Vector3f;
+    fn t_max(&self) -> Float;
+    fn time(&self) -> Float;
+    fn medium(&self) -> Option<&Medium>;
 
     fn find_point(&self, t: Float) -> Point3f {
         self.o() + self.d() * t
@@ -20,6 +23,9 @@ impl BaseRay for Ray<'_> {
     fn d(&self) -> Vector3f {
         self.d
     }
+    fn t_max(&self) -> Float { self.t_max }
+    fn time(&self) -> Float { self.time }
+    fn medium(&self) -> Option<&Medium> { self.medium }
 }
 
 #[derive(Debug)]
@@ -32,7 +38,7 @@ pub struct Ray<'a> {
 }
 
 impl<'a> Ray<'a> {
-    fn new(o: &Point3f, d: &Vector3f, t_max: Float, time: Float, medium: Option<&'a Medium>) -> Self {
+    pub fn new(o: &Point3f, d: &Vector3f, t_max: Float, time: Float, medium: Option<&'a Medium>) -> Self {
         Self {
             o: *o,
             d: *d,
@@ -73,6 +79,9 @@ impl BaseRay for RayDifferential<'_> {
     fn d(&self) -> Vector3f {
         self.r.d
     }
+    fn t_max(&self) -> Float { self.r.t_max }
+    fn time(&self) -> Float { self.r.time }
+    fn medium(&self) -> Option<&Medium> { self.r.medium }
 }
 
 impl<'a> From<Ray<'a>> for RayDifferential<'a> {

@@ -3,7 +3,7 @@ use super::point::{Point2, Point3};
 use super::normal::Normal3;
 use crate::core::pbrt::{Float};
 use std::ops::{Add, Mul, AddAssign, MulAssign, SubAssign, Sub, Div, DivAssign, Index, IndexMut, Neg};
-use num::Signed;
+use num::{Signed, Zero, One};
 
 pub type Vector2i = Vector2<isize>;
 pub type Vector2f = Vector2<Float>;
@@ -165,23 +165,27 @@ where T: Copy + Mul<T, Output=T>
     }
 }
 
-impl Div<Float> for Vector2<Float> {
-    type Output = Vector2<Float>;
+impl<T> Div<T> for Vector2<T>
+    where T: Copy + Div<T, Output=T> + Zero + One
+{
+    type Output = Vector2<T>;
 
-    fn div(self, rhs: Float) -> Vector2<Float> {
-        assert_ne!(0.0 as Float, rhs);
-        let d = 1.0 as Float / rhs;
+    fn div(self, rhs: T) -> Vector2<T> {
+        assert_ne!(T::zero(), rhs);
+        let d = T::one() / rhs;
 
-        Vector2::<Float> {
+        Vector2::<T> {
             x: self.x * d,
             y: self.y * d
         }
     }
 }
 
-impl DivAssign<Float> for Vector2<Float> {
-    fn div_assign(&mut self, rhs: Float) {
-        let d = 1.0 as Float / rhs;
+impl<T> DivAssign<T> for Vector2<T>
+    where T: One + MulAssign + Div<T, Output=T>
+{
+    fn div_assign(&mut self, rhs: T) {
+        let d = T::one() / rhs;
 
         self.x *= d;
         self.y *= d;
@@ -446,14 +450,16 @@ impl<T> MulAssign<T> for Vector3<T>
     }
 }
 
-impl Div<Float> for Vector3f {
-    type Output = Vector3f;
+impl<T> Div<T> for Vector3<T>
+    where T: Copy + Div<T, Output=T> + Zero + One
+{
+    type Output = Vector3<T>;
 
-    fn div(self, rhs: Float) -> Vector3f {
-        assert_ne!(0.0 as Float, rhs);
-        let d = 1.0 as Float / rhs;
+    fn div(self, rhs: T) -> Vector3<T> {
+        assert_ne!(T::zero(), rhs);
+        let d = T::one() / rhs;
 
-        Vector3f {
+        Vector3::<T> {
             x: self.x * d,
             y: self.y * d,
             z: self.z * d
@@ -461,9 +467,11 @@ impl Div<Float> for Vector3f {
     }
 }
 
-impl DivAssign<Float> for Vector3<Float> {
-    fn div_assign(&mut self, rhs: Float) {
-        let d = 1.0 as Float / rhs;
+impl<T> DivAssign<T> for Vector3<T>
+    where T: One + MulAssign + Div<T, Output=T>
+{
+    fn div_assign(&mut self, rhs: T) {
+        let d = T::one() / rhs;
 
         self.x *= d;
         self.y *= d;

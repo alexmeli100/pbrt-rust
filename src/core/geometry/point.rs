@@ -2,6 +2,7 @@ use num;
 use crate::core::pbrt::*;
 use super::vector::{Vector3, Vector2};
 use std::ops::{Add, Mul, AddAssign, MulAssign, SubAssign, Sub, Div, DivAssign, Index, IndexMut, Neg};
+use num::{Zero, One, Num};
 
 
 pub type Point2f = Point2<Float>;
@@ -267,22 +268,22 @@ impl<T> Point3<T> {
     }
 
     pub fn max(&self, p2: &Self) -> Self
-        where T: Ord + Copy
+        where T: num::Float + Copy
     {
         Point3::new(
-            std::cmp::max(self.x, p2.x),
-            std::cmp::max(self.y, p2.y),
-            std::cmp::max(self.z, p2.z)
+            self.x.max(p2.x),
+            self.y.max(p2.y),
+            self.z.max(p2.z)
         )
     }
 
     pub fn min(&self, p2: &Self) -> Self
-        where T: Ord + Copy
+        where T: num::Float + Copy
     {
         Point3::new(
-            std::cmp::min(self.x, p2.x),
-            std::cmp::min(self.y, p2.y),
-            std::cmp::min(self.z, p2.z)
+            self.x.min(p2.x),
+            self.y.min(p2.y),
+            self.z.min(p2.z)
         )
     }
 
@@ -493,24 +494,24 @@ impl<T> MulAssign<T> for Point3<T>
     }
 }
 
-impl Div<Float> for Point3<Float> {
-    type Output = Point3<Float>;
+impl<T> Div<T> for Point3<T>
+where T: Copy + Div<T, Output=T> + Zero + One
+{
+    type Output = Point3<T>;
 
-    fn div(self, rhs: Float) -> Point3<Float> {
-        assert_ne!(0.0 as Float, rhs);
-        let d = 1.0 as Float / rhs;
+    fn div(self, rhs: T) -> Point3<T> {
+        assert_ne!(T::zero(), rhs);
+        let d = T::one() / rhs;
 
-        Point3::<Float> {
-            x: self.x * d,
-            y: self.y * d,
-            z: self.z * d
-        }
+        Point3::new(self.x*d, self.y*d, self.z*d)
     }
 }
 
-impl DivAssign<Float> for Point3<Float> {
-    fn div_assign(&mut self, rhs: Float) {
-        let d = 1.0 as Float / rhs;
+impl<T> DivAssign<T> for Point3<T>
+where T: One + MulAssign + Div<T, Output=T>
+{
+    fn div_assign(&mut self, rhs: T) {
+        let d = T::one() / rhs;
 
         self.x *= d;
         self.y *= d;
