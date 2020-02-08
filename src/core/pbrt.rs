@@ -17,3 +17,15 @@ pub fn lerp<T, S>(t: S, x: T, y: T) -> T
 pub fn radians(deg: Float) -> Float {
     (std::f32::consts::PI / 180.0) as Float * deg
 }
+
+pub fn clamp<T>(val: T, high: T, low: T) -> T
+where T: PartialOrd
+{
+    if val < low {
+        low
+    } else if val > high {
+        high
+    } else {
+        val
+    }
+}

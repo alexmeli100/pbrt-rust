@@ -2,7 +2,8 @@ use num;
 use crate::core::pbrt::*;
 use super::vector::{Vector3, Vector2};
 use std::ops::{Add, Mul, AddAssign, MulAssign, SubAssign, Sub, Div, DivAssign, Index, IndexMut, Neg};
-use num::{Zero, One, Num};
+use num::{Zero, One};
+use std::fmt::Debug;
 
 
 pub type Point2f = Point2<Float>;
@@ -495,7 +496,7 @@ impl<T> MulAssign<T> for Point3<T>
 }
 
 impl<T> Div<T> for Point3<T>
-where T: Copy + Div<T, Output=T> + Zero + One
+where T: Copy + Div<T, Output=T> + Zero + One + PartialEq + Debug
 {
     type Output = Point3<T>;
 
@@ -508,7 +509,7 @@ where T: Copy + Div<T, Output=T> + Zero + One
 }
 
 impl<T> DivAssign<T> for Point3<T>
-where T: One + MulAssign + Div<T, Output=T>
+where T: One + MulAssign + Div<T, Output=T> + Copy
 {
     fn div_assign(&mut self, rhs: T) {
         let d = T::one() / rhs;

@@ -4,6 +4,7 @@ use super::normal::Normal3;
 use crate::core::pbrt::{Float};
 use std::ops::{Add, Mul, AddAssign, MulAssign, SubAssign, Sub, Div, DivAssign, Index, IndexMut, Neg};
 use num::{Signed, Zero, One};
+use std::fmt::Debug;
 
 pub type Vector2i = Vector2<isize>;
 pub type Vector2f = Vector2<Float>;
@@ -166,7 +167,7 @@ where T: Copy + Mul<T, Output=T>
 }
 
 impl<T> Div<T> for Vector2<T>
-    where T: Copy + Div<T, Output=T> + Zero + One
+    where T: Copy + Div<T, Output=T> + Zero + One + PartialEq + Debug
 {
     type Output = Vector2<T>;
 
@@ -182,7 +183,7 @@ impl<T> Div<T> for Vector2<T>
 }
 
 impl<T> DivAssign<T> for Vector2<T>
-    where T: One + MulAssign + Div<T, Output=T>
+    where T: One + MulAssign + Div<T, Output=T> + Copy
 {
     fn div_assign(&mut self, rhs: T) {
         let d = T::one() / rhs;
@@ -451,7 +452,7 @@ impl<T> MulAssign<T> for Vector3<T>
 }
 
 impl<T> Div<T> for Vector3<T>
-    where T: Copy + Div<T, Output=T> + Zero + One
+    where T: Copy + Div<T, Output=T> + Zero + One + PartialEq + Debug
 {
     type Output = Vector3<T>;
 
@@ -468,7 +469,7 @@ impl<T> Div<T> for Vector3<T>
 }
 
 impl<T> DivAssign<T> for Vector3<T>
-    where T: One + MulAssign + Div<T, Output=T>
+    where T: One + MulAssign + Div<T, Output=T> + Copy
 {
     fn div_assign(&mut self, rhs: T) {
         let d = T::one() / rhs;

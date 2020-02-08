@@ -1,7 +1,7 @@
 use std::ops::{Add, Mul, AddAssign, Sub, SubAssign, Neg, MulAssign, Div, DivAssign, Index, IndexMut};
 use crate::core::geometry::vector::Vector3;
 use crate::core::pbrt::Float;
-use num::{Signed, ToPrimitive};
+use num::{Signed};
 
 pub type Normal3f = Normal3<Float>;
 pub type Normal3i = Normal3<isize>;

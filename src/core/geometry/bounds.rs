@@ -260,14 +260,7 @@ impl<T> Bounds3<T>
         }
     }
 
-    pub fn from_points(p1: Point3<T>, p2: Point3<T>) -> Self
-        where T: Ord
-    {
-        let p_min = Point3::new(std::cmp::min(p1.x, p2.x), std::cmp::min(p1.y, p2.y), std::cmp::min(p1.z, p2.z));
-        let p_max = Point3::new(std::cmp::max(p1.x, p2.x), std::cmp::max(p1.y, p2.y), std::cmp::max(p1.z, p2.z));
 
-        Self { p_min, p_max }
-    }
 
     pub fn corner(&self, c: usize) -> Point3<T> {
         assert!(c < 8);
@@ -457,6 +450,13 @@ impl Bounds3f {
         };
 
         (c, rad)
+    }
+
+    pub fn from_points(p1: Point3f, p2: Point3f) -> Self {
+        let p_min = Point3::new(p1.x.min(p2.x), p1.y.min(p2.y), p1.z.min(p2.z));
+        let p_max = Point3::new(p1.x.max(p2.x), p1.y.max(p2.y), p1.z.max(p2.z));
+
+        Self { p_min, p_max }
     }
 }
 
