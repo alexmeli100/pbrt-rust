@@ -510,6 +510,10 @@ impl<T> From<Point3<T>> for Vector3<T> {
     }
 }
 
+impl<T> From<Normal3<T>> for Vector3<T> {
+    fn from(n: Normal3<T>) -> Self { Self::new(n.x, n.y, n.z) }
+}
+
 pub fn vec3_coordinate_system(v1: &Vector3f, v2: &mut Vector3f, v3: &mut Vector3f) {
     if v1.x.abs() > v1.y.abs() {
         *v2 = Vector3f::new(-v1.z, 0.0, v1.x) / (v1.x*v1.x + v1.z*v1.z).sqrt()
