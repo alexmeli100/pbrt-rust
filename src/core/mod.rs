@@ -4,3 +4,7 @@ pub mod medium;
 pub mod transform;
 pub mod quaternion;
 pub mod interaction;
+pub mod primitive;
+pub mod reflection;
+pub mod bssrdf;
+pub mod shape;

@@ -9,7 +9,7 @@ pub trait  BaseRay {
     fn d(&self) -> Vector3f;
     fn t_max(&self) -> Float;
     fn time(&self) -> Float;
-    fn medium(&self) -> Option<Arc<dyn Medium>>;
+    fn medium(&self) -> Option<Arc<Medium>>;
 
     fn find_point(&self, t: Float) -> Point3f {
         self.o() + self.d() * t
@@ -33,7 +33,7 @@ impl BaseRay for Ray {
     fn time(&self) -> Float { self.time }
     
     #[inline(always)]
-    fn medium(&self) -> Option<Arc<dyn Medium>> {
+    fn medium(&self) -> Option<Arc<Medium>> {
         match &self.medium {
             Some(m) => Some(m.clone()),
             _ => None
@@ -47,11 +47,11 @@ pub struct Ray {
     d: Vector3f,
     t_max: Float,
     time: Float,
-    medium: Option<Arc<dyn Medium>>,
+    medium: Option<Arc<Medium>>,
 }
 
 impl Ray {
-    pub fn new(o: &Point3f, d: &Vector3f, t_max: Float, time: Float, medium: Option<Arc<dyn Medium>>) -> Self {
+    pub fn new(o: &Point3f, d: &Vector3f, t_max: Float, time: Float, medium: Option<Arc<Medium>>) -> Self {
         Self {
             o: *o,
             d: *d,
@@ -102,7 +102,7 @@ impl BaseRay for RayDifferential {
     fn time(&self) -> Float { self.r.time }
     
     #[inline(always)]
-    fn medium(&self) -> Option<Arc<dyn Medium>> {
+    fn medium(&self) -> Option<Arc<Medium>> {
         match &self.r.medium() {
             Some(m) => Some(m.clone()),
             _ => None
@@ -127,7 +127,7 @@ impl RayDifferential {
         self.ry_direction = self.d() + (self.ry_direction - self.d()) * s;
     }
 
-    pub fn new(o: &Point3f, d: &Vector3f, t_max: Float, time: Float, medium: Option<Arc<dyn Medium>>) -> Self {
+    pub fn new(o: &Point3f, d: &Vector3f, t_max: Float, time: Float, medium: Option<Arc<Medium>>) -> Self {
         let r = Ray::new(o, d, t_max, time, medium);
         Self::from(r)
     }

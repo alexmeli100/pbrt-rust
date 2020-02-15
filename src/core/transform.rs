@@ -10,6 +10,8 @@ use num::{Zero, One};
 use std::ops::{Mul, Add, Div, Sub};
 use std::sync::Arc;
 use std::fmt::Debug;
+use crate::core::interaction::SurfaceInteraction;
+use std::cell::Cell;
 
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub struct Transform {
@@ -212,6 +214,10 @@ impl Transform {
         unimplemented!()
     }
 
+    pub fn transform_point_abs_error<T>(&self, p: &Point3<T>, p_error: &Vector3<T>, abs_error: &mut Vector3<T>) -> Point3<T> {
+        unimplemented!()
+    }
+
     pub fn transform_vector<T>(&self, v: &Vector3<T>) -> Vector3<T>
         where T: Mul<Float, Output=T> + Add<T, Output=T> + Copy
     {
@@ -279,6 +285,37 @@ impl Transform {
         ret = ret.union_point(&self.transform_point(&Point3::new(b.p_max.x, b.p_max.y, b.p_min.z)));
         ret = ret.union_point(&self.transform_point(&Point3::new(b.p_max.x, b.p_min.y, b.p_max.z)));
         ret = ret.union_point(&self.transform_point(&Point3::new(b.p_max.x, b.p_max.y, b.p_max.z)));
+
+        ret
+    }
+
+    pub fn transform_surface_interaction(&self, si: &mut SurfaceInteraction) -> SurfaceInteraction {
+        let mut ret = SurfaceInteraction::default();
+        ret.interaction_data.p = self.transform_point_abs_error(&si.interaction_data.p, &si.interaction_data.p_error, &mut ret.interaction_data.p_error);
+        ret.interaction_data.n = self.transform_normal(&si.interaction_data.n).normalize();
+        ret.interaction_data.wo = self.transform_vector(&si.interaction_data.wo);
+        ret.interaction_data.time = si.interaction_data.time;
+        ret.uv = si.uv;
+        ret.dpdu = self.transform_vector(&si.dpdu);
+        ret.dpdv = self.transform_vector(&si.dpdv);
+        ret.dndu = self.transform_normal(&si.dndu);
+        ret.dndv = self.transform_normal(&si.dndv);
+        ret.shading.n = self.transform_normal(&si.shading.n).normalize();
+        ret.shading.dpdu = self.transform_vector(&si.shading.dpdu);
+        ret.shading.dpdv = self.transform_vector(&si.shading.dpdv);
+        ret.shading.dndu = self.transform_normal(&si.shading.dndu);
+        ret.shading.dndv = self.transform_normal(&si.shading.dndv);
+        ret.shading.n = ret.shading.n.face_foward(&ret.interaction_data.n);
+        ret.dudx = Cell::new(si.dudx.get());
+        ret.dvdx = Cell::new(si.dvdx.get());
+        ret.dudy = Cell::new(si.dudy.get());
+        ret.dvdy = Cell::new(si.dvdy.get());
+        ret.dpdx = Cell::new(self.transform_vector(&si.dpdx.get()));
+        ret.dpdy = Cell::new(self.transform_vector(&si.dpdy.get()));
+        ret.shape = si.get_shape();
+        ret.primitive = si.get_primitive();
+        ret.bsdf = si.get_bsdf();
+        ret.bssrdf = si.get_bssrdf();
 
         ret
     }

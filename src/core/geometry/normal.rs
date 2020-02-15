@@ -82,6 +82,8 @@ impl<T> Normal3<T> {
         self.x.min(self.y.min(self.z))
     }
 
+
+
     pub fn max_component(&self) -> T
         where T: num::Float
     {
@@ -110,6 +112,12 @@ impl<T> Normal3<T> {
         }
     }
 
+}
+
+impl Normal3f {
+    pub fn normalize(&self) -> Self {
+        *self / self.length()
+    }
 }
 
 impl<T> Add for Normal3<T>
