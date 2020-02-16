@@ -12,6 +12,7 @@ use crate::core::reflection::BSDF;
 use crate::core::bssrdf::BSSRDF;
 use std::cell::Cell;
 use crate::core::shape::Shape;
+use std::rc::Rc;
 
 pub trait Interaction {
     fn p(&self) -> Point3f;
@@ -34,7 +35,7 @@ pub trait Interaction {
         Ray::new(&o, &d, 1.0 - SHADOW_EPSILON, self.time(), self.get_medium_vec(&d))
     }
 
-    fn spawn_rayto_interaction(&self, it: &impl Interaction) -> Ray {
+    fn spawn_rayto_interaction(&self, it: &Rc<dyn Interaction>) -> Ray {
         let o = offset_ray_origin(&self.p(), &self.p_error(), &self.n(), &(it.p() - self.p()));
         let t = offset_ray_origin(&it.p(), &it.p_error(), &it.n(), &(o - it.p()));
 

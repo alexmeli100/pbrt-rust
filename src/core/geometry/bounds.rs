@@ -4,6 +4,8 @@ use crate::core::pbrt;
 use crate::core::pbrt::Float;
 use num::{Num, Bounded};
 use std::ops::{Index, IndexMut, Mul, Add, DivAssign, Sub};
+use crate::core::geometry::ray::{Ray, BaseRay};
+use crate::core::geometry::vector::Vector3f;
 
 pub type Bounds2f = Bounds2<Float>;
 pub type Bounds2i = Bounds2<isize>;
@@ -391,6 +393,8 @@ impl<T> Bounds3<T>
         }
     }
 
+
+
 }
 
 impl<T> Default for Bounds3<T>
@@ -457,6 +461,48 @@ impl Bounds3f {
         let p_max = Point3::new(p1.x.max(p2.x), p1.y.max(p2.y), p1.z.max(p2.z));
 
         Self { p_min, p_max }
+    }
+
+    pub fn intersect_p(&self, ray: &Ray) -> (bool, Option<Float>, Option<Float>) {
+        let mut t0 = 0.0;
+        let mut t1 = ray.t_max();
+
+        for i in 0..3 {
+            let inv_raydir = 1.0 / ray.d()[i];
+            let mut tnear = (self.p_min[i] - ray.o()[i]) * inv_raydir;
+            let mut tfar = (self.p_max[i] - ray.o()[i]) * inv_raydir;
+
+            if tnear > tfar {
+                std::mem::swap(&mut tnear, &mut tfar);
+            }
+
+            t0 = if tnear > t0 { tnear } else { t0 };
+            t1 = if tfar < t1 { tfar } else { t1 };
+
+            if t0 > t1 { return (false, None, None) }
+        }
+
+        (true, Some(t0), Some(t1))
+    }
+
+    pub fn intersect_p2(&self, ray: &Ray, inv_dir: &Vector3f, dir_isneg: [usize; 3]) -> bool {
+        let mut tmin = (self[dir_isneg[0]].x - ray.o().x) * inv_dir.x;
+        let mut tmax = (self[1 - dir_isneg[0]].x - ray.o().x) * inv_dir.x;
+        let tymin = (self[dir_isneg[0]].y - ray.o().y) * inv_dir.y;
+        let tymax = (self[1 - dir_isneg[0]].y - ray.o().y) * inv_dir.y;
+
+        if tmin > tymax || tymin > tmax { return false; }
+        if tymin > tmin { tmin = tymin; }
+        if tymax < tmax { tmax = tymax; }
+
+        let tzmin = (self[dir_isneg[0]].z - ray.o().z) * inv_dir.z;
+        let tzmax = (self[1 - dir_isneg[0]].z - ray.o().z) * inv_dir.z;
+
+        if tmin > tzmax || tzmin > tmax { return false; }
+        if tzmin > tmin { tmin = tzmin; }
+        if tzmax < tmax { tmax = tzmax; }
+
+        (tmin < ray.t_max()) && tmax > 0.0
     }
 }
 
