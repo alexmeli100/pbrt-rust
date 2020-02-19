@@ -1,5 +1,6 @@
 use crate::core::geometry::point::{Point3f, Point2f, Point3};
 use crate::core::geometry::vector::{Vector3f, Vector3};
+use enum_dispatch::enum_dispatch;
 use super::pbrt::*;
 use crate::core::geometry::normal::{Normal3f, Normal3};
 use super::medium::MediumInterface;
@@ -11,10 +12,11 @@ use crate::core::primitive::Primitive;
 use crate::core::reflection::BSDF;
 use crate::core::bssrdf::BSSRDF;
 use std::cell::Cell;
-use crate::core::shape::Shape;
+use crate::core::shape::{Shape, IShape};
 use std::rc::Rc;
 
-pub trait Interaction {
+#[enum_dispatch(Interaction)]
+pub trait InteractionFace {
     fn p(&self) -> Point3f;
     fn time(&self) -> Float;
     fn p_error(&self) -> Vector3f;
@@ -35,7 +37,7 @@ pub trait Interaction {
         Ray::new(&o, &d, 1.0 - SHADOW_EPSILON, self.time(), self.get_medium_vec(&d))
     }
 
-    fn spawn_rayto_interaction(&self, it: &Rc<dyn Interaction>) -> Ray {
+    fn spawn_rayto_interaction(&self, it: &Rc<Interaction>) -> Ray {
         let o = offset_ray_origin(&self.p(), &self.p_error(), &self.n(), &(it.p() - self.p()));
         let t = offset_ray_origin(&it.p(), &it.p_error(), &it.n(), &(o - it.p()));
 
@@ -101,7 +103,7 @@ pub struct SurfaceInteraction {
     pub dpdv: Vector3f,
     pub dndu: Normal3f,
     pub dndv: Normal3f,
-    pub shape: Option<Arc<dyn Shape>>,
+    pub shape: Option<Arc<Shape>>,
     pub shading: Shading,
     pub primitive: Option<Arc<dyn Primitive>>,
     pub bsdf: Option<Arc<BSDF>>,
@@ -124,10 +126,11 @@ pub struct Shading {
 }
 
 impl SurfaceInteraction {
-    pub fn new(p: &Point3f, p_error: &Vector3f, uv: &Point2f, wo: &Vector3f, dpdu: &Vector3f, dpdv: &Vector3f, dndu: &Normal3f, dndv: &Normal3f, time: Float, shape: Option<Arc<dyn Shape>>) -> Self {
+    pub fn new(p: &Point3f, p_error: &Vector3f, uv: &Point2f, wo: &Vector3f, dpdu: &Vector3f, dpdv: &Vector3f, dndu: &Normal3f, dndv: &Normal3f, time: Float, shape: Option<Arc<Shape>>) -> Self {
         let n: Normal3f = dpdu.cross(dpdv).normalize().into();
         let mut interaction_data = InteractionData::new(p, &n.into(), p_error, wo, time, None);
         let mut shading = Shading {n, dpdu: *dpdu, dpdv: *dpdv, dndu: *dndu, dndv: *dndv };
+
 
         if let Some(ref s) = shape {
             if s.reverse_orientation() ^ s.transform_swapshandedness() {
@@ -189,7 +192,7 @@ impl SurfaceInteraction {
         }
     }
 
-    pub fn get_shape(&self) -> Option<Arc<dyn Shape>> {
+    pub fn get_shape(&self) -> Option<Arc<Shape>> {
         match self.shape {
             Some(ref shape) => Some(shape.clone()),
             _ => None
@@ -211,7 +214,7 @@ impl SurfaceInteraction {
     }
 }
 
-impl Interaction for SurfaceInteraction {
+impl InteractionFace for SurfaceInteraction {
     fn p(&self) -> Point3<f32> {
         self.interaction_data.p
     }
@@ -238,4 +241,9 @@ impl Interaction for SurfaceInteraction {
             _ => None
         }
     }
+}
+
+#[enum_dispatch]
+pub enum Interaction {
+    SurfaceInteraction
 }

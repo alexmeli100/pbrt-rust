@@ -2,8 +2,10 @@ use super::point::Point3f;
 use super::vector::Vector3f;
 use crate::core::pbrt::Float;
 use crate::core::medium::Medium;
+use enum_dispatch::enum_dispatch;
 use std::sync::Arc;
 
+#[enum_dispatch(RayVariant)]
 pub trait  BaseRay {
     fn o(&self) -> Point3f;
     fn d(&self) -> Vector3f;
@@ -131,5 +133,11 @@ impl RayDifferential {
         let r = Ray::new(o, d, t_max, time, medium);
         Self::from(r)
     }
+}
+
+#[enum_dispatch]
+pub enum RayVariant {
+    Ray,
+    RayDifferential
 }
 

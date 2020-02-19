@@ -1,13 +1,12 @@
 use crate::core::pbrt::{Float, clamp, radians};
 use crate::core::transform::Transform;
 use std::rc::Rc;
-use crate::core::shape::Shape;
+use crate::core::shape::IShape;
 use crate::core::geometry::point::Point2;
 use crate::core::interaction::{Interaction, SurfaceInteraction};
 use crate::core::geometry::bounds::Bounds3;
 use crate::core::geometry::vector::Vector3;
 use crate::core::geometry::ray::Ray;
-use std::sync::Arc;
 
 pub struct Sphere {
     pub radius: Float,
@@ -37,7 +36,7 @@ impl Sphere {
     }
 }
 
-impl Shape for Sphere {
+impl IShape for Sphere {
     fn object_bound(&self) -> Bounds3<f32> {
         unimplemented!()
     }
@@ -50,15 +49,15 @@ impl Shape for Sphere {
         unimplemented!()
     }
 
-    fn sample(&self, u: &Point2<f32>) -> Arc<dyn Interaction> {
+    fn sample(&self, u: &Point2<f32>) -> Interaction {
         unimplemented!()
     }
 
-    fn sample_interaction(&self, i: &dyn Interaction, u: &Point2<f32>) -> Arc<dyn Interaction> {
+    fn sample_interaction(&self, i: &Interaction, u: &Point2<f32>) -> Interaction {
         unimplemented!()
     }
 
-    fn pdf(&self, i: &dyn Interaction, wi: &Vector3<f32>) -> f32 {
+    fn pdf(&self, i: &Interaction, wi: &Vector3<f32>) -> f32 {
         unimplemented!()
     }
 
