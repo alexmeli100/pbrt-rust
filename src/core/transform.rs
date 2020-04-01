@@ -6,7 +6,7 @@ use crate::core::geometry::normal::Normal3;
 use crate::core::geometry::ray::*;
 use crate::core::geometry::bounds::Bounds3f;
 use super::quaternion::*;
-use num::{Zero, One};
+use num::{Zero, One, Signed};
 use std::ops::{Mul, Add, Div, Sub};
 use std::sync::Arc;
 use std::fmt::Debug;
@@ -210,8 +210,29 @@ impl Transform {
         }
     }
 
-    pub fn transform_point_error<T>(&self, p: &Point3<T>, o_error: &mut Vector3<T>) -> Point3<T> {
-        unimplemented!()
+    pub fn transform_point_error<T>(&self, p: &Point3<T>, p_error: &mut Vector3<T>) -> Point3<T>
+        where T: Mul<Float, Output=T> + Add<T, Output=T> + Add<Float, Output=T> + Div<T, Output=T> + Copy + Signed + One + PartialEq + Zero + Debug + From<Float>
+    {
+        let x = p.x;
+        let y = p.y;
+        let z = p.z;
+
+        let xp = x*self.m[(0,0)] + y*self.m[(0,1)] + z*self.m[(0,2)] + self.m[(0,3)];
+        let yp = x*self.m[(1,0)] + y*self.m[(1,1)] + z*self.m[(1,2)] + self.m[(1,3)];
+        let zp = x*self.m[(2,0)] + y*self.m[(2,1)] + z*self.m[(2,2)] + self.m[(2,3)];
+        let wp = x*self.m[(3,0)] + y*self.m[(3,1)] + z*self.m[(3,2)] + self.m[(3,3)];
+
+        let x_abs_sum = (x*self.m[(0, 0)]).abs() + (y*self.m[(0, 1)]).abs() + (z*self.m[(0, 2)]).abs() + (self.m[(0, 3)]).abs();
+        let y_abs_sum = (x*self.m[(1, 0)]).abs() + (y*self.m[(1, 1)]).abs() + (z*self.m[(1, 2)]).abs() + (self.m[(1, 3)]).abs();
+        let z_abs_sum = (x*self.m[(2, 0)]).abs() + (y*self.m[(2, 1)]).abs() + (z*self.m[(2, 2)]).abs() + (self.m[(2, 3)]).abs();
+
+        *p_error = Vector3::new(x_abs_sum, y_abs_sum, z_abs_sum) * T::from(gamma(3));
+
+        if wp == T::one() {
+            Point3::new(xp, yp, zp)
+        } else {
+            Point3::new(xp, yp, zp) / wp
+        }
     }
 
     pub fn transform_point_abs_error<T>(&self, p: &Point3<T>, p_error: &Vector3<T>, abs_error: &mut Vector3<T>) -> Point3<T> {
@@ -224,6 +245,25 @@ impl Transform {
         let x = v.x;
         let y = v.y;
         let z = v.z;
+
+        Vector3::new(
+            x*self.m[(0, 0)] + y*self.m[(0, 1)] + z*self.m[(0, 2)],
+            x*self.m[(1, 0)] + y*self.m[(1, 1)] + z*self.m[(1, 2)],
+            x*self.m[(2, 0)] + y*self.m[(2, 1)] + z*self.m[(2, 2)]
+        )
+    }
+
+    pub fn transform_vector_error<T>(&self, v: &Vector3<T>, abs_error: &mut Vector3<T>) -> Vector3<T>
+        where T: Mul<Float, Output=T> + Add<T, Output=T> + Add<Float, Output=T> + Div<T, Output=T> + Copy + Signed + One + PartialEq + Zero + Debug + From<Float>
+
+    {
+        let x = v.x;
+        let y = v.y;
+        let z = v.z;
+
+        abs_error.x = T::from(gamma(3)) * (x*self.m[(0, 0)]).abs() + (y*self.m[(0, 1)]).abs() + (z*self.m[(0, 2)]).abs() + (self.m[(0, 3)]).abs();
+        abs_error.y = T::from(gamma(3)) * (x*self.m[(1, 0)]).abs() + (y*self.m[(1, 1)]).abs() + (z*self.m[(1, 2)]).abs() + (self.m[(1, 3)]).abs();
+        abs_error.z = T::from(gamma(3)) * (x*self.m[(2, 0)]).abs() + (y*self.m[(2, 1)]).abs() + (z*self.m[(2, 2)]).abs() + (self.m[(2, 3)]).abs();
 
         Vector3::new(
             x*self.m[(0, 0)] + y*self.m[(0, 1)] + z*self.m[(0, 2)],
@@ -258,6 +298,20 @@ impl Transform {
             let dt = d.abs().dot(&o_error) / l_squared;
             o += d * dt;
             t_max -= dt;
+        }
+
+        Ray::new(&o, &d, t_max, r.time(), r.medium())
+    }
+
+    pub fn transform_ray_error(&self, r: &Ray, o_error: &mut Vector3f, d_error: &mut Vector3f) -> Ray {
+        let mut o = self.transform_point_error(&r.o(), o_error);
+        let d = self.transform_vector_error(&r.d(), d_error);
+        let t_max = r.t_max();
+        let length_squared = d.length_squared();
+
+        if length_squared > 0.0 {
+            let dt = d.abs().dot(o_error) / length_squared;
+            o += d * dt;
         }
 
         Ray::new(&o, &d, t_max, r.time(), r.medium())

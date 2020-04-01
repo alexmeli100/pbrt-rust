@@ -1,9 +1,13 @@
 use std::ops::{Sub, Add, Mul};
 
+use crate::core::efloat::EFloat;
+use num::One;
+
 pub type Float = f32;
 
 pub const INFINITY: f32 = std::f32::INFINITY;
 pub const SHADOW_EPSILON: f32 = 0.0001;
+pub const MACHINE_EPSILON: f32 = std::f32::EPSILON * 0.5;
 
 #[inline(always)]
 fn float_to_bits(f: f32) -> u32 {
@@ -68,7 +72,7 @@ pub fn lerp<T, S>(t: S, x: T, y: T) -> T
         S: Copy + num::One + Sub<S, Output=S>,
         T: Add<T, Output=T> + Mul<S, Output=T>
 {
-    let one: S = num::One::one();
+    let one: S = One::one();
 
     x * (one - t) + y * t
 }
@@ -88,4 +92,12 @@ where T: PartialOrd
     } else {
         val
     }
+}
+
+pub fn gamma(n: isize) -> Float {
+    (n as Float * MACHINE_EPSILON) / (1.0 - n as Float * MACHINE_EPSILON)
+}
+
+pub fn quadratic(a: EFloat, b: EFloat, c: EFloat, t0: &mut EFloat, t1: &mut EFloat) -> bool {
+    unimplemented!();
 }
