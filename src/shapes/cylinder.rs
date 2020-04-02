@@ -1,51 +1,47 @@
-use crate::core::pbrt::{Float, clamp, radians, quadratic, gamma, PI};
+use crate::core::pbrt::{Float, radians, clamp, quadratic, PI, gamma};
 use crate::core::transform::Transform;
 use crate::core::shape::{IShape, Shape};
-use crate::core::geometry::point::{Point2, Point3, Point2f, Point3f};
+use crate::core::geometry::point::{Point2f, Point3f};
 use crate::core::interaction::{Interaction, SurfaceInteraction};
-use crate::core::geometry::bounds::{Bounds3, Bounds3f};
-use crate::core::geometry::vector::{Vector3, Vector3f};
+use crate::core::geometry::vector::{Vector3f, Vector3};
 use crate::core::geometry::ray::{Ray, BaseRay};
+use crate::core::geometry::bounds::Bounds3f;
 use crate::core::efloat::EFloat;
 use crate::core::geometry::normal::Normal3f;
 use std::sync::Arc;
 
 #[derive(Debug, Copy, Clone)]
-pub struct Sphere {
-    pub radius: Float,
-    pub zmin: Float,
-    pub zmax: Float,
-    pub theta_min: Float,
-    pub theta_max: Float,
-    pub phi_max: Float,
-    pub object_to_world: Transform,
-    pub world_to_object: Transform,
-    pub reverse_orientation: bool,
-    pub transform_swapshandedness: bool
+pub struct Cylinder {
+    radius: Float,
+    zmax: Float,
+    zmin: Float,
+    phi_max: Float,
+    object_to_world: Transform,
+    world_to_object: Transform,
+    reverse_orientation: bool,
+    transform_swapshandedness: bool
 }
 
-impl Sphere {
+impl Cylinder {
     pub fn new(object_to_world: Transform, world_to_object: Transform, reverse_orientation: bool, radius: Float, zmin: Float, zmax: Float, phi_max: Float) -> Self {
         Self {
             object_to_world,
             world_to_object,
             reverse_orientation,
             radius,
-            zmin: clamp(zmin.min(zmax), -radius, radius),
-            zmax: clamp(zmin.max(zmax), -radius, radius),
-            theta_min: clamp(zmin / radius, -1.0, 1.0).acos(),
-            theta_max: clamp(zmax / radius, -1.0, 1.0).acos(),
-            phi_max: radians(clamp(phi_max, 0.0, 360.0)),
+            zmin: zmin.min(zmax),
+            zmax: zmax.max(zmin),
+            phi_max: (radians(clamp(phi_max, 0.0, 360.0))),
             transform_swapshandedness: false
         }
     }
 }
 
-impl IShape for Sphere {
+impl IShape for Cylinder {
     fn object_bound(&self) -> Bounds3f {
         Bounds3f::from_points(
-            Point3f::new(-self.radius, -self.radius, self.zmin),
-            Point3f::new(self.radius, self.radius, self.zmax))
+           Point3f::new(-self.radius, -self.radius, self.zmin),
+           Point3f::new(self.radius, self.radius, self.zmax))
     }
 
     fn intersect(&self, r: &Ray, t_hit: &mut f32, isect: &mut SurfaceInteraction, test_aphatexture: bool) -> bool {
@@ -65,9 +61,9 @@ impl IShape for Sphere {
         let dx = EFloat::new(ray.d().x, d_err.x);
         let dy = EFloat::new(ray.d().y, o_err.y);
         let dz = EFloat::new(ray.d().z, o_err.z);
-        let a = dx * dx + dy * dy + dz * dz;
-        let b = (dx * ox + dy * oy + dz * oz) * 2.0;
-        let c = ox * ox + oy * oy + oz * oz - EFloat::from(self.radius) * EFloat::from(self.radius);
+        let a = dx * dx + dy * dy;
+        let b = (dx * ox + dy * oy) * 2.0;
+        let c = ox * ox + oy * oy - EFloat::from(self.radius) * EFloat::from(self.radius);
 
         // solve quadratic equation for t values
         let mut t0 = EFloat::default();
@@ -90,89 +86,78 @@ impl IShape for Sphere {
             }
         }
 
-        // compute sphere hit position and phi
+        // compute cylinder hit position and phi
         p_hit = ray.find_point(t_shape_hit.into());
 
-        // refine sphere intersection point
-        p_hit *= p_hit.distance(&Point3::new(0.0, 0.0, 0.0)) / self.radius;
-
-        if p_hit.x == 0.0 && p_hit.y == 0.0 {
-            p_hit.x = 1e-5 as Float * self.radius;
-        }
-
+        // refine cylinder intersection point
+        let hit_rad = (p_hit.x * p_hit.x + p_hit.y * p_hit.y).sqrt();
+        p_hit.x *= self.radius / hit_rad;
+        p_hit.y *= self.radius / hit_rad;
         phi = p_hit.y.atan2(p_hit.x);
 
         if phi < 0.0 {
-            phi += 2.0 * PI;
+            phi *= 2.0 * PI
         }
 
-        // test sphere intersection against clipping parameters
-        if (self.zmin > -self.radius && p_hit.z < self.zmin) || (self.zmax < self.radius && p_hit.z > self.zmax) || phi > self.phi_max {
+        // test cylinder intersection against clipping parameters
+        if p_hit.z < self.zmin || p_hit.z > self.zmax || phi > self.phi_max {
             if t_shape_hit == t1 {
-                return false;
-            }
-
-            if t1.upper_bound() > ray.t_max() {
                 return false;
             }
 
             t_shape_hit = t1;
 
-            // compute sphere hit position and phi
-            p_hit = ray.find_point(t_shape_hit.into());
-
-            // refine sphere intersection point
-            p_hit *= p_hit.distance(&Point3::new(0.0, 0.0, 0.0)) / self.radius;
-
-            if p_hit.x == 0.0 && p_hit.y == 0.0 {
-                p_hit.x = 1e-5 as Float * self.radius;
+            if t1.upper_bound() > r.t_max() {
+                return false;
             }
 
+            // compute cylinder hit point and phi
+            p_hit = ray.find_point(t_shape_hit.into());
+
+            // refine cylinder intersection point
+            let hit_rad = (p_hit.x * p_hit.x + p_hit.y * p_hit.y).sqrt();
+            p_hit.x *= self.radius / hit_rad;
+            p_hit.y *= self.radius / hit_rad;
             phi = p_hit.y.atan2(p_hit.x);
 
             if phi < 0.0 {
-                phi += 2.0 * phi;
+                phi *= 2.0 * PI
             }
 
-            if (self.zmin > -self.radius && p_hit.z < self.zmin) || (self.zmax < self.radius && p_hit.z > self.zmax) || phi > self.phi_max {
-                return false
+            if p_hit.z < self.zmin || p_hit.z > self.zmax || phi > self.phi_max {
+                return false;
             }
         }
 
-        // find parametric representation of sphere hit
+        // find parametric representation fo cylinder hit
         let u = phi / self.phi_max;
-        let theta = (clamp(p_hit.z / self.radius, -1.0, 1.0)).acos();
-        let v = (theta - self.theta_min) / (self.theta_max - self.theta_min);
+        let v = (p_hit.z - self.zmin) / (self.zmax - self.zmin);
 
-        // compute sphere dpdu and dpdv
-        let zradius = (p_hit.x * p_hit.x + p_hit.y * p_hit.y).sqrt();
-        let inv_radius = 1.0 / zradius;
-        let cos_phi = p_hit.x * inv_radius;
-        let sin_phi = p_hit.y * inv_radius;
+        // compute cylinder dpdu and dpdv
         let dpdu = Vector3f::new(-self.phi_max * p_hit.y, self.phi_max * p_hit.x, 0.0);
-        let dpdv = Vector3f::new(p_hit.z * cos_phi, p_hit.z * sin_phi, -self.radius * theta.sin()) * (self.theta_max - self.theta_min);
+        let dpdv = Vector3f::new(0.0, 0.0, self.zmax - self.zmin);
 
-        // compute sphere dndu and dndv
-        let d2pduu =  Vector3f::new(p_hit.x, p_hit.y, 0.0) * self.phi_max * self.phi_max;
-        let d2pduv = Vector3f::new(-sin_phi, cos_phi, 0.0) * (self.theta_max - self.theta_min) * p_hit.z * self.phi_max;
-        let d2pdvv = Vector3f::new(p_hit.x, p_hit.y, p_hit.z) * (self.theta_max - self.theta_min) * (self.theta_max - self.theta_min);
+        // compute cylinder dndu and dndv
+        let d2pduu = Vector3f::new(p_hit.x, p_hit.y, 0.0) * self.phi_max * -self.phi_max;
+        let d2pduv = Vector3f::new(0.0, 0.0, 0.0);
+        let d2pdvv = Vector3f::new(0.0, 0.0, 0.0);
 
-        // compute coefficeints for fundamental forms
+        // compute coefficients for fundamental forms
         let E = dpdu.dot(&dpdu);
         let F = dpdu.dot(&dpdv);
         let G = dpdv.dot(&dpdv);
-        let N: Vector3f = dpdu.cross(&dpdv).normalize();
+        let N: Vector3f = (dpdv.cross(&dpdv)).normalize();
         let e = N.dot(&d2pduu);
         let f = N.dot(&d2pduv);
         let g = N.dot(&d2pdvv);
 
-        // compute dndu and dndv from fundamental form coefficents
-        let inv_EGF2 = 1.0 / (E * G - F * F);
-        let dndu = Normal3f::from(dpdu * inv_EGF2 * (f * F - e * G) + dpdv * inv_EGF2 * (e * F - f * E));
-        let dndv = Normal3f::from(dpdu * inv_EGF2 * (g * F - f * G) + dpdv * inv_EGF2 * (f * F - g * E));
+        // compute dndu and dndv from fundamental form coefficients
+        let invEGF2 = 1.0 / (E * G - F * F);
+        let dndu = Normal3f::from(dpdu * invEGF2 * (f * F - e * G) + dpdv * invEGF2 * (e * F - f * E));
+        let dndv = Normal3f::from(dpdu * invEGF2 * (g * F - f * G) + dpdv * invEGF2 * (f * F - g * E));
 
-        // compute error bounds for sphere intersection
-        let p_error = Vector3f::from(p_hit).abs() * gamma(5);
+        // compute error bounds for cylinder intersection
+        let p_error = Vector3f::new(p_hit.x, p_hit.y, 0.0).abs() * gamma(3);
 
         // Initialize SurfaceInteraction from parametric information
         let shape = Some(Arc::new(Shape::from(*self)));
@@ -180,10 +165,12 @@ impl IShape for Sphere {
         *isect = self.object_to_world.transform_surface_interaction(&mut s);
 
         *t_hit = t_shape_hit.into();
+
         return true;
+
     }
 
-    fn intersect_p(&self, r: &Ray, test_aphatexture: bool) -> bool {
+    fn intersect_p(&self, r: &Ray, test_alpha_texture: bool) -> bool {
         let mut phi;
         let mut p_hit;
 
@@ -200,9 +187,9 @@ impl IShape for Sphere {
         let dx = EFloat::new(ray.d().x, d_err.x);
         let dy = EFloat::new(ray.d().y, o_err.y);
         let dz = EFloat::new(ray.d().z, o_err.z);
-        let a = dx * dx + dy * dy + dz * dz;
-        let b = (dx * ox + dy * oy + dz * oz) * 2.0;
-        let c = ox * ox + oy * oy + oz * oz - EFloat::from(self.radius) * EFloat::from(self.radius);
+        let a = dx * dx + dy * dy;
+        let b = (dx * ox + dy * oy) * 2.0;
+        let c = ox * ox + oy * oy - EFloat::from(self.radius) * EFloat::from(self.radius);
 
         // solve quadratic equation for t values
         let mut t0 = EFloat::default();
@@ -225,71 +212,66 @@ impl IShape for Sphere {
             }
         }
 
-        // compute sphere hit position and phi
+        // compute cylinder hit position and phi
         p_hit = ray.find_point(t_shape_hit.into());
 
-        // refine sphere intersection point
-        p_hit *= p_hit.distance(&Point3::new(0.0, 0.0, 0.0)) / self.radius;
-
-        if p_hit.x == 0.0 && p_hit.y == 0.0 {
-            p_hit.x = 1e-5 as Float * self.radius;
-        }
-
+        // refine cylinder intersection point
+        let hit_rad = (p_hit.x * p_hit.x + p_hit.y * p_hit.y).sqrt();
+        p_hit.x *= self.radius / hit_rad;
+        p_hit.y *= self.radius / hit_rad;
         phi = p_hit.y.atan2(p_hit.x);
 
         if phi < 0.0 {
-            phi += 2.0 * phi;
+            phi *= 2.0 * PI
         }
 
-        // test sphere intersection against clipping parameters
-        if (self.zmin > -self.radius && p_hit.z < self.zmin) || (self.zmax < self.radius && p_hit.z > self.zmax) || phi > self.phi_max {
+        // test cylinder intersection against clipping parameters
+        if p_hit.z < self.zmin || p_hit.z > self.zmax || phi > self.phi_max {
             if t_shape_hit == t1 {
-                return false;
-            }
-
-            if t1.upper_bound() > ray.t_max() {
                 return false;
             }
 
             t_shape_hit = t1;
 
-            // compute sphere hit position and phi
-            p_hit = ray.find_point(t_shape_hit.into());
-
-            // refine sphere intersection point
-            p_hit *= p_hit.distance(&Point3::new(0.0, 0.0, 0.0)) / self.radius;
-
-            if p_hit.x == 0.0 && p_hit.y == 0.0 {
-                p_hit.x = 1e-5 as Float * self.radius;
+            if t1.upper_bound() > r.t_max() {
+                return false;
             }
 
+            // compute cylinder hit point and phi
+            p_hit = ray.find_point(t_shape_hit.into());
+
+            // refine cylinder intersection point
+            let hit_rad = (p_hit.x * p_hit.x + p_hit.y * p_hit.y).sqrt();
+            p_hit.x *= self.radius / hit_rad;
+            p_hit.y *= self.radius / hit_rad;
             phi = p_hit.y.atan2(p_hit.x);
 
             if phi < 0.0 {
-                phi += 2.0 * phi;
+                phi *= 2.0 * PI
             }
 
-            if (self.zmin > -self.radius && p_hit.z < self.zmin) || (self.zmax < self.radius && p_hit.z > self.zmax) || phi > self.phi_max {
-                return false
+            if p_hit.z < self.zmin || p_hit.z > self.zmax || phi > self.phi_max {
+                return false;
             }
         }
 
         return true;
+
     }
 
     fn area(&self) -> f32 {
-        self.phi_max * self.radius * (self.zmax - self.zmin)
+        return (self.zmax - self.zmin) * self.radius * self.phi_max;
     }
 
-    fn sample(&self, u: &Point2<f32>) -> Interaction {
+    fn sample(&self, u: &Point2f) -> Interaction {
         unimplemented!()
     }
 
-    fn sample_interaction(&self, i: &Interaction, u: &Point2<f32>) -> Interaction {
+    fn sample_interaction(&self, i: &Interaction, u: &Point2f) -> Interaction {
         unimplemented!()
     }
 
-    fn pdf(&self, i: &Interaction, wi: &Vector3<f32>) -> f32 {
+    fn pdf(&self, i: &Interaction, wi: &Vector3f) -> f32 {
         unimplemented!()
     }
 

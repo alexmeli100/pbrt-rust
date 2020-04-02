@@ -1,13 +1,14 @@
 use crate::core::geometry::bounds::Bounds3f;
 use crate::core::pbrt::Float;
 use crate::core::geometry::ray::{Ray, BaseRay};
-use std::rc::Rc;
 use enum_dispatch::enum_dispatch;
 use crate::core::interaction::{SurfaceInteraction, Interaction};
 use crate::core::geometry::point::Point2f;
 use crate::core::geometry::vector::Vector3f;
 use crate::core::transform::Transform;
 use crate::shapes::sphere::Sphere;
+use crate::shapes::cylinder::Cylinder;
+use crate::shapes::disk::Disk;
 
 #[enum_dispatch]
 pub trait IShape {
@@ -15,12 +16,12 @@ pub trait IShape {
     fn world_bound(&self) -> Bounds3f {
         self.object_to_world().transform_bounds(&self.object_bound())
     }
-    fn intersect(&self, fray: &Ray, t_hit: &mut Float, isect: &mut SurfaceInteraction, test_aphatexture: bool) -> bool;
-    fn intersect_p(&self, ray: &Ray, test_alpha_texture: bool) -> bool {
-        let mut t_hit = ray.t_max();
+    fn intersect(&self, r: &Ray, t_hit: &mut Float, isect: &mut SurfaceInteraction, test_aphatexture: bool) -> bool;
+    fn intersect_p(&self, r: &Ray, test_alpha_texture: bool) -> bool {
+        let mut t_hit = r.t_max();
         let mut isect = SurfaceInteraction::default();
 
-        self.intersect(ray, &mut t_hit, &mut isect, test_alpha_texture)
+        self.intersect(r, &mut t_hit, &mut isect, test_alpha_texture)
     }
 
     fn area(&self) -> Float;
@@ -36,5 +37,7 @@ pub trait IShape {
 
 #[enum_dispatch(IShape)]
 pub enum Shape {
-    Sphere
+    Sphere,
+    Cylinder,
+    Disk
 }

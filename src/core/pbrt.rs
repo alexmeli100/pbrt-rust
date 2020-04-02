@@ -5,6 +5,7 @@ use num::One;
 
 pub type Float = f32;
 
+pub const PI: Float = 3.14159265358979323846;
 pub const INFINITY: f32 = std::f32::INFINITY;
 pub const SHADOW_EPSILON: f32 = 0.0001;
 pub const MACHINE_EPSILON: f32 = std::f32::EPSILON * 0.5;
