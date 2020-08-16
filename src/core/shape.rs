@@ -9,6 +9,7 @@ use crate::core::transform::Transform;
 use crate::shapes::sphere::Sphere;
 use crate::shapes::cylinder::Cylinder;
 use crate::shapes::disk::Disk;
+use crate::shapes::triangle::Triangle;
 
 #[enum_dispatch]
 pub trait IShape {
@@ -39,5 +40,6 @@ pub trait IShape {
 pub enum Shape {
     Sphere,
     Cylinder,
-    Disk
+    Disk,
+    Triangle
 }

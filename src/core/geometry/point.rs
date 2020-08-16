@@ -341,7 +341,7 @@ impl<T> Point3<T> {
 
     }
 
-    pub fn permutate(&self, x: usize, y: usize, z: usize) -> Self
+    pub fn permute(&self, x: usize, y: usize, z: usize) -> Self
         where T: Copy
     {
         Point3::new(self[x], self[y], self[z])

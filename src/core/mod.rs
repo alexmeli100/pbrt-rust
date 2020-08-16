@@ -9,3 +9,4 @@ pub mod reflection;
 pub mod bssrdf;
 pub mod shape;
 pub mod efloat;
+pub mod texture;

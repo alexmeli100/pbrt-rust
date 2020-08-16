@@ -279,7 +279,7 @@ impl<T> Vector3<T> {
     pub fn abs_dot_norm(&self, n: &Normal3<T>) -> T
     where T: Copy + Signed { self.dot_norm(n).abs() }
 
-    pub fn permutate(&self, x: usize, y: usize, z: usize) -> Vector3<T>
+    pub fn permute(&self, x: usize, y: usize, z: usize) -> Vector3<T>
         where T: Copy
     {
         Vector3::new(self[x], self[y], self[z])
@@ -295,6 +295,26 @@ impl<T> Vector3<T> {
     where T: num::Float
     {
         self.x.max(self.y.max(self.z))
+    }
+
+    pub fn max_dimension(&self) -> usize
+    where T: PartialOrd
+    {
+
+
+        if self.x > self.y {
+            if self.x > self.z {
+                0
+            } else {
+                2
+            }
+        } else {
+            if self.y > self.z {
+                1
+            } else {
+                2
+            }
+        }
     }
 
     pub fn face_foward(&self, v: &Self) -> Self
