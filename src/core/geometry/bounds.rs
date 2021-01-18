@@ -4,8 +4,11 @@ use crate::core::pbrt;
 use crate::core::pbrt::Float;
 use num::{Num, Bounded};
 use std::ops::{Index, IndexMut, Mul, Add, DivAssign, Sub};
-use crate::core::geometry::ray::{Ray, BaseRay};
+use crate::core::geometry::ray::Ray;
 use crate::core::geometry::vector::Vector3f;
+use std::fmt::Display;
+use static_assertions::_core::fmt::Formatter;
+use std::fmt;
 
 pub type Bounds2f = Bounds2<Float>;
 pub type Bounds2i = Bounds2<isize>;
@@ -63,7 +66,7 @@ where T: Num + Copy
         d.x * d.y
     }
 
-    pub fn maximum_extent(&self) -> i32
+    pub fn maximum_extent(&self) -> usize
     where T: PartialOrd
     {
         let d = self.diagonal();
@@ -161,9 +164,24 @@ where T: Num + Copy
 
 }
 
+impl<T> Display for Bounds2<T>
+where T: Display + Num
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "[ {} - {} ]", self.p_min, self.p_max)
+    }
+}
+
 impl Bounds2f {
+    pub fn new(p1: &Point2f, p2: &Point2f) -> Self {
+        Self {
+            p_min: Point2::new(p1.x.min(p2.x), p1.y.min(p2.y)),
+            p_max: Point2::new(p1.x.max(p2.x), p1.y.max(p2.y))
+        }
+    }
+
     pub fn bounding_sphere(&self) -> (Point2f, Float) {
-        let c = (self.p_min + self.p_max) / 2 as Float;
+        let c = (self.p_min + self.p_max) / 2_f32;
         let rad = match self.inside(&c) {
             true => self.p_max.distance(&c),
             _ => 0 as Float
@@ -172,6 +190,7 @@ impl Bounds2f {
         (c, rad)
     }
 }
+
 
 impl<T> From<Point2<T>> for Bounds2<T>
 where T: Num + Copy
@@ -210,12 +229,12 @@ impl<T> IndexMut<usize> for Bounds2<T>
     }
 }
 
-pub struct Bounds2iIterator {
+pub struct Bounds2iIterator<'a> {
     p_start: Point2i,
-    b: Bounds2i
+    b: &'a Bounds2i
 }
 
-impl Iterator for Bounds2iIterator {
+impl<'a> Iterator for Bounds2iIterator<'a> {
     type Item = Point2i;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -226,21 +245,33 @@ impl Iterator for Bounds2iIterator {
             self.p_start.y += 1;
         }
 
-        if self.p_start.y == self.b.p_max.y {
-            return None;
+        if self.p_start.y >= self.b.p_max.y {
+            None
         } else {
             Some(self.p_start)
         }
     }
 }
 
+impl<'a> IntoIterator for &'a Bounds2i {
+    type Item = Point2i;
+    type IntoIter = Bounds2iIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Bounds2iIterator {
+            p_start: Point2i::new(self.p_min.x - 1, self.p_min.y),
+            b: self
+        }
+    }
+}
+
 impl Bounds2i {
     pub fn iter(&self) -> Bounds2iIterator {
-        let p_start = self.p_min;
+        let p_start = Point2i::new(self.p_min.x - 1, self.p_min.y);
 
         Bounds2iIterator{
             p_start,
-            b: *self
+            b: self
         }
     }
 }
@@ -261,8 +292,13 @@ impl<T> Bounds3<T>
             p_max: *p
         }
     }
+    
+    pub fn new(p1: Point3<T>, p2: Point3<T>) -> Self where T: Ord {
+        let p_min = Point3::new(p1.x.min(p2.x), p1.y.min(p2.y), p1.z.min(p2.z));
+        let p_max = Point3::new(p1.x.max(p2.x), p1.y.max(p2.y), p1.z.max(p2.z));
 
-
+        Self { p_min, p_max }
+    }
 
     pub fn corner(&self, c: usize) -> Point3<T> {
         assert!(c < 8);
@@ -284,7 +320,7 @@ impl<T> Bounds3<T>
         d.x * d.y * d.z
     }
 
-    pub fn maximum_extent(&self) -> i32
+    pub fn maximum_extent(&self) -> usize
         where T: PartialOrd
     {
         let d = self.diagonal();
@@ -437,6 +473,14 @@ impl<T> IndexMut<usize> for Bounds3<T>
     }
 }
 
+impl<T> Display for Bounds3<T>
+    where T: Display + Num
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "[ {} - {} ]", self.p_min, self.p_max)
+    }
+}
+
 impl Bounds3f {
     pub fn surface_area(&self) -> Float
         where
@@ -447,7 +491,7 @@ impl Bounds3f {
     }
 
     pub fn bounding_sphere(&self) -> (Point3f, Float) {
-        let c = (self.p_min + self.p_max) / 2 as Float;
+        let c = (self.p_min + self.p_max) / 2_f32;
         let rad = match self.inside(&c) {
             true => self.p_max.distance(&c),
             _ => 0 as Float
@@ -463,14 +507,14 @@ impl Bounds3f {
         Self { p_min, p_max }
     }
 
-    pub fn intersect_p(&self, ray: &Ray) -> (bool, Option<Float>, Option<Float>) {
+    pub fn intersect_p(&self, ray: &Ray, hitt0: &mut Float, hitt1: &mut Float) -> bool {
         let mut t0 = 0.0;
-        let mut t1 = ray.t_max();
+        let mut t1 = ray.t_max;
 
         for i in 0..3 {
-            let inv_raydir = 1.0 / ray.d()[i];
-            let mut tnear = (self.p_min[i] - ray.o()[i]) * inv_raydir;
-            let mut tfar = (self.p_max[i] - ray.o()[i]) * inv_raydir;
+            let inv_raydir = 1.0 / ray.d[i];
+            let mut tnear = (self.p_min[i] - ray.o[i]) * inv_raydir;
+            let mut tfar = (self.p_max[i] - ray.o[i]) * inv_raydir;
 
             if tnear > tfar {
                 std::mem::swap(&mut tnear, &mut tfar);
@@ -479,30 +523,33 @@ impl Bounds3f {
             t0 = if tnear > t0 { tnear } else { t0 };
             t1 = if tfar < t1 { tfar } else { t1 };
 
-            if t0 > t1 { return (false, None, None) }
+            if t0 > t1 { return false }
         }
 
-        (true, Some(t0), Some(t1))
+        *hitt0 = t0;
+        *hitt1 = t1;
+
+        true
     }
 
     pub fn intersect_p2(&self, ray: &Ray, inv_dir: &Vector3f, dir_isneg: [usize; 3]) -> bool {
-        let mut tmin = (self[dir_isneg[0]].x - ray.o().x) * inv_dir.x;
-        let mut tmax = (self[1 - dir_isneg[0]].x - ray.o().x) * inv_dir.x;
-        let tymin = (self[dir_isneg[0]].y - ray.o().y) * inv_dir.y;
-        let tymax = (self[1 - dir_isneg[0]].y - ray.o().y) * inv_dir.y;
+        let mut tmin = (self[dir_isneg[0]].x - ray.o.x) * inv_dir.x;
+        let mut tmax = (self[1 - dir_isneg[0]].x - ray.o.x) * inv_dir.x;
+        let tymin = (self[dir_isneg[0]].y - ray.o.y) * inv_dir.y;
+        let tymax = (self[1 - dir_isneg[0]].y - ray.o.y) * inv_dir.y;
 
         if tmin > tymax || tymin > tmax { return false; }
         if tymin > tmin { tmin = tymin; }
         if tymax < tmax { tmax = tymax; }
 
-        let tzmin = (self[dir_isneg[0]].z - ray.o().z) * inv_dir.z;
-        let tzmax = (self[1 - dir_isneg[0]].z - ray.o().z) * inv_dir.z;
+        let tzmin = (self[dir_isneg[0]].z - ray.o.z) * inv_dir.z;
+        let tzmax = (self[1 - dir_isneg[0]].z - ray.o.z) * inv_dir.z;
 
         if tmin > tzmax || tzmin > tmax { return false; }
         if tzmin > tmin { tmin = tzmin; }
         if tzmax < tmax { tmax = tzmax; }
 
-        (tmin < ray.t_max()) && tmax > 0.0
+        (tmin < ray.t_max) && tmax > 0.0
     }
 }
 
