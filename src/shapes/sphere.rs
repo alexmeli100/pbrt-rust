@@ -1,14 +1,15 @@
 use crate::core::pbrt::{Float, clamp, radians, quadratic, gamma, PI};
 use crate::core::transform::Transform;
-use crate::core::shape::{IShape, Shape};
+use crate::core::shape::{Shape, Shapes};
 use crate::core::geometry::point::{Point2, Point3, Point2f, Point3f};
-use crate::core::interaction::{Interaction, SurfaceInteraction};
-use crate::core::geometry::bounds::{Bounds3, Bounds3f};
+use crate::core::interaction::{Interaction, SurfaceInteraction, Interactions};
+use crate::core::geometry::bounds::{Bounds3f};
 use crate::core::geometry::vector::{Vector3, Vector3f};
-use crate::core::geometry::ray::{Ray, BaseRay};
+use crate::core::geometry::ray::Ray;
 use crate::core::efloat::EFloat;
 use crate::core::geometry::normal::Normal3f;
 use std::sync::Arc;
+use crate::core::paramset::ParamSet;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Sphere {
@@ -41,7 +42,7 @@ impl Sphere {
     }
 }
 
-impl IShape for Sphere {
+impl Shape for Sphere {
     fn object_bound(&self) -> Bounds3f {
         Bounds3f::from_points(
             Point3f::new(-self.radius, -self.radius, self.zmin),
@@ -59,12 +60,12 @@ impl IShape for Sphere {
 
         // compute quadratic sphere coefficients
         // Initialize EFloat ray coordinate values
-        let ox = EFloat::new(ray.o().x, o_err.x);
-        let oy = EFloat::new(ray.o().y, o_err.y);
-        let oz = EFloat::new(ray.o().z, o_err.z);
-        let dx = EFloat::new(ray.d().x, d_err.x);
-        let dy = EFloat::new(ray.d().y, o_err.y);
-        let dz = EFloat::new(ray.d().z, o_err.z);
+        let ox = EFloat::new(ray.o.x, o_err.x);
+        let oy = EFloat::new(ray.o.y, o_err.y);
+        let oz = EFloat::new(ray.o.z, o_err.z);
+        let dx = EFloat::new(ray.d.x, d_err.x);
+        let dy = EFloat::new(ray.d.y, o_err.y);
+        let dz = EFloat::new(ray.d.z, o_err.z);
         let a = dx * dx + dy * dy + dz * dz;
         let b = (dx * ox + dy * oy + dz * oz) * 2.0;
         let c = ox * ox + oy * oy + oz * oz - EFloat::from(self.radius) * EFloat::from(self.radius);
@@ -77,7 +78,7 @@ impl IShape for Sphere {
         }
 
         // check quadratic shape t0 and t1 for nearest intersection
-        if t0.upper_bound() > ray.t_max() || t1.lower_bound() <= 0.0 {
+        if t0.upper_bound() > ray.t_max || t1.lower_bound() <= 0.0 {
             return false;
         }
 
@@ -85,7 +86,7 @@ impl IShape for Sphere {
         if t_shape_hit.lower_bound() <= 0.0 {
             t_shape_hit = t1;
 
-            if t_shape_hit.upper_bound() > ray.t_max() {
+            if t_shape_hit.upper_bound() > ray.t_max {
                 return false;
             }
         }
@@ -112,7 +113,7 @@ impl IShape for Sphere {
                 return false;
             }
 
-            if t1.upper_bound() > ray.t_max() {
+            if t1.upper_bound() > ray.t_max {
                 return false;
             }
 
@@ -175,15 +176,15 @@ impl IShape for Sphere {
         let p_error = Vector3f::from(p_hit).abs() * gamma(5);
 
         // Initialize SurfaceInteraction from parametric information
-        let shape = Some(Arc::new(Shape::from(*self)));
-        let mut s = SurfaceInteraction::new(&p_hit, &p_error, &Point2f::new(u, v), &-ray.d(), &dpdu, &dpdv, &dndu, &dndv, ray.time(), shape);
+        let shape = Some(Arc::new((*self).into()));
+        let mut s = SurfaceInteraction::new(&p_hit, &p_error, &Point2f::new(u, v), &-ray.d, &dpdu, &dpdv, &dndu, &dndv, ray.time, shape);
         *isect = self.object_to_world.transform_surface_interaction(&mut s);
 
         *t_hit = t_shape_hit.into();
-        return true;
+        true
     }
 
-    fn intersect_p(&self, r: &Ray, test_aphatexture: bool) -> bool {
+    fn intersect_p(&self, r: &Ray, _test_aphatexture: bool) -> bool {
         let mut phi;
         let mut p_hit;
 
@@ -194,12 +195,12 @@ impl IShape for Sphere {
 
         // compute quadratic sphere coefficients
         // Initialize EFloat ray coordinate values
-        let ox = EFloat::new(ray.o().x, o_err.x);
-        let oy = EFloat::new(ray.o().y, o_err.y);
-        let oz = EFloat::new(ray.o().z, o_err.z);
-        let dx = EFloat::new(ray.d().x, d_err.x);
-        let dy = EFloat::new(ray.d().y, o_err.y);
-        let dz = EFloat::new(ray.d().z, o_err.z);
+        let ox = EFloat::new(ray.o.x, o_err.x);
+        let oy = EFloat::new(ray.o.y, o_err.y);
+        let oz = EFloat::new(ray.o.z, o_err.z);
+        let dx = EFloat::new(ray.d.x, d_err.x);
+        let dy = EFloat::new(ray.d.y, o_err.y);
+        let dz = EFloat::new(ray.d.z, o_err.z);
         let a = dx * dx + dy * dy + dz * dz;
         let b = (dx * ox + dy * oy + dz * oz) * 2.0;
         let c = ox * ox + oy * oy + oz * oz - EFloat::from(self.radius) * EFloat::from(self.radius);
@@ -212,7 +213,7 @@ impl IShape for Sphere {
         }
 
         // check quadratic shape t0 and t1 for nearest intersection
-        if t0.upper_bound() > ray.t_max() || t1.lower_bound() <= 0.0 {
+        if t0.upper_bound() > ray.t_max || t1.lower_bound() <= 0.0 {
             return false;
         }
 
@@ -220,7 +221,7 @@ impl IShape for Sphere {
         if t_shape_hit.lower_bound() <= 0.0 {
             t_shape_hit = t1;
 
-            if t_shape_hit.upper_bound() > ray.t_max() {
+            if t_shape_hit.upper_bound() > ray.t_max {
                 return false;
             }
         }
@@ -247,7 +248,7 @@ impl IShape for Sphere {
                 return false;
             }
 
-            if t1.upper_bound() > ray.t_max() {
+            if t1.upper_bound() > ray.t_max {
                 return false;
             }
 
@@ -274,22 +275,22 @@ impl IShape for Sphere {
             }
         }
 
-        return true;
+        true
     }
 
     fn area(&self) -> f32 {
         self.phi_max * self.radius * (self.zmax - self.zmin)
     }
 
-    fn sample(&self, u: &Point2<f32>) -> Interaction {
+    fn sample(&self, u: &Point2<f32>) -> Interactions {
         unimplemented!()
     }
 
-    fn sample_interaction(&self, i: &Interaction, u: &Point2<f32>) -> Interaction {
+    fn sample_interaction(&self, i: &Interactions, u: &Point2<f32>) -> Interactions {
         unimplemented!()
     }
 
-    fn pdf(&self, i: &Interaction, wi: &Vector3<f32>) -> f32 {
+    fn pdf(&self, i: &Interactions, wi: &Vector3<f32>) -> f32 {
         unimplemented!()
     }
 
@@ -308,4 +309,13 @@ impl IShape for Sphere {
     fn world_to_object(&self) -> Transform {
         self.world_to_object
     }
+}
+
+pub fn create_sphere(o2w: Transform, w2o: Transform, rev_orien: bool, params: &ParamSet) -> Shapes {
+    let radius = params.find_one_float("radius", 1.0);
+    let zmin = params.find_one_float("zmin", -radius);
+    let zmax = params.find_one_float("zmax", radius);
+    let phi_max = params.find_one_float("phimax", 360.0);
+
+    Sphere::new(o2w, w2o, rev_orien, radius, zmin, zmax, phi_max).into()
 }

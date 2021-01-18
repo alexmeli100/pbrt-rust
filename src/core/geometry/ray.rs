@@ -1,65 +1,41 @@
 use super::point::Point3f;
 use super::vector::Vector3f;
 use crate::core::pbrt::Float;
-use crate::core::medium::Medium;
-use enum_dispatch::enum_dispatch;
+use crate::core::medium::{Medium, Mediums};
 use std::sync::Arc;
-
-#[enum_dispatch(RayVariant)]
-pub trait  BaseRay {
-    fn o(&self) -> Point3f;
-    fn d(&self) -> Vector3f;
-    fn t_max(&self) -> Float;
-    fn time(&self) -> Float;
-    fn medium(&self) -> Option<Arc<Medium>>;
-
-    fn find_point(&self, t: Float) -> Point3f {
-        self.o() + self.d() * t
-    }
-}
-
-impl BaseRay for Ray {
-    fn o(&self) -> Point3f {
-        self.o
-    }
-
-    #[inline(always)]
-    fn d(&self) -> Vector3f {
-        self.d
-    }
-    
-    #[inline(always)]
-    fn t_max(&self) -> Float { self.t_max }
-    
-    #[inline(always)]
-    fn time(&self) -> Float { self.time }
-    
-    #[inline(always)]
-    fn medium(&self) -> Option<Arc<Medium>> {
-        match &self.medium {
-            Some(m) => Some(m.clone()),
-            _ => None
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct Ray {
-    o: Point3f,
-    d: Vector3f,
-    t_max: Float,
-    time: Float,
-    medium: Option<Arc<Medium>>,
+    pub o: Point3f,
+    pub d: Vector3f,
+    pub t_max: Float,
+    pub time: Float,
+    pub medium: Option<Arc<Mediums>>,
+    pub diff: Option<RayDifferential>
 }
 
 impl Ray {
-    pub fn new(o: &Point3f, d: &Vector3f, t_max: Float, time: Float, medium: Option<Arc<Medium>>) -> Self {
+    pub fn find_point(&self, t: Float) -> Point3f {
+        self.o + self.d * t
+    }
+
+    pub fn new(o: &Point3f, d: &Vector3f, t_max: Float, time: Float, medium: Option<Arc<Mediums>>, diff: Option<RayDifferential>) -> Self {
         Self {
             o: *o,
             d: *d,
             t_max,
             time,
-            medium
+            medium,
+            diff
+        }
+    }
+
+    pub fn scale_differential(&mut self, s: Float) {
+        if let Some(ref mut d) = self.diff {
+            d.rx_origin = self.o + (d.rx_origin - self.o) * s;
+            d.ry_origin = self.o + (d.ry_origin - self.o) * s;
+            d.rx_direction = self.d + (d.rx_direction - self.d) * s;
+            d.ry_direction = self.d + (d.ry_direction - self.d) * s;
         }
     }
 }
@@ -71,73 +47,20 @@ impl Default for Ray {
             medium: None,
             d: Vector3f::default(),
             o: Point3f::default(),
-            time: 0 as Float
+            time: 0 as Float,
+            diff: None
         }
     }
 }
 
 #[derive(Debug, Default)]
 pub struct RayDifferential {
-    pub r: Ray,
-    pub rx_origin: Point3f,
-    pub ry_origin: Point3f,
-    pub rx_direction: Vector3f,
-    pub ry_direction: Vector3f,
-    pub has_differentials: bool
+    pub rx_origin           : Point3f,
+    pub ry_origin           : Point3f,
+    pub rx_direction        : Vector3f,
+    pub ry_direction        : Vector3f,
+    pub has_differentials   : bool
 }
 
-impl BaseRay for RayDifferential {
-    #[inline(always)]
-    fn o(&self) -> Point3f {
-        self.r.o
-    }
 
-    #[inline(always)]
-    fn d(&self) -> Vector3f {
-        self.r.d
-    }
-    
-    #[inline(always)]
-    fn t_max(&self) -> Float { self.r.t_max }
-    
-    #[inline(always)]
-    fn time(&self) -> Float { self.r.time }
-    
-    #[inline(always)]
-    fn medium(&self) -> Option<Arc<Medium>> {
-        match &self.r.medium() {
-            Some(m) => Some(m.clone()),
-            _ => None
-        }
-    }
-}
-
-impl From<Ray> for RayDifferential {
-    fn from(r: Ray) -> Self {
-        RayDifferential {
-            r,
-            ..Default::default()
-        }
-    }
-}
-
-impl RayDifferential {
-    pub fn scale_differential(&mut self, s: Float) {
-        self.rx_origin = self.o() + (self.rx_origin - self.o()) * s;
-        self.ry_origin = self.o() + (self.ry_origin - self.o()) * s;
-        self.rx_direction = self.d() + (self.rx_direction - self.d()) * s;
-        self.ry_direction = self.d() + (self.ry_direction - self.d()) * s;
-    }
-
-    pub fn new(o: &Point3f, d: &Vector3f, t_max: Float, time: Float, medium: Option<Arc<Medium>>) -> Self {
-        let r = Ray::new(o, d, t_max, time, medium);
-        Self::from(r)
-    }
-}
-
-#[enum_dispatch]
-pub enum RayVariant {
-    Ray,
-    RayDifferential
-}
 
