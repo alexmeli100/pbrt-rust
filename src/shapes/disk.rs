@@ -1,42 +1,41 @@
 use crate::core::pbrt::{Float, radians, clamp, PI};
 use crate::core::transform::Transform;
-use crate::core::shape::{IShape, Shape};
+use crate::core::shape::{Shape, Shapes};
 use crate::core::geometry::point::{Point2f, Point3f};
-use crate::core::interaction::{Interaction, SurfaceInteraction};
+use crate::core::interaction::{Interaction, SurfaceInteraction, Interactions};
 use crate::core::geometry::vector::{Vector3f, Vector3};
-use crate::core::geometry::ray::{Ray, BaseRay};
+use crate::core::geometry::ray::Ray;
 use crate::core::geometry::bounds::Bounds3f;
 use crate::core::geometry::normal::Normal3f;
 use std::sync::Arc;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Disk {
-    height: Float,
-    radius: Float,
-    inner_radius: Float,
-    phi_max: Float,
-    object_to_world: Transform,
-    world_to_object: Transform,
-    reverse_orientation: bool,
+    height                   : Float,
+    radius                   : Float,
+    inner_radius             : Float,
+    phi_max                  : Float,
+    object_to_world          : Transform,
+    world_to_object          : Transform,
+    reverse_orientation      : bool,
     transform_swapshandedness: bool
 }
 
 impl Disk {
-    pub fn new(object_to_world: Transform, world_to_object: Transform, reverse_orientation: bool, height: Float, radius: Float, inner_radius: Float, phi_max: Float) -> Self {
+    pub fn new(
+        object_to_world: Transform, world_to_object: Transform, reverse_orientation: bool,
+        height: Float, radius: Float, inner_radius: Float, phi_max: Float) -> Self {
         Self {
-            object_to_world,
-            world_to_object,
-            reverse_orientation,
-            height,
-            radius,
-            inner_radius,
+            object_to_world, world_to_object,
+            reverse_orientation, height,
+            radius, inner_radius,
             phi_max: radians(clamp(phi_max, 0.0, 360.0)),
             transform_swapshandedness: false
         }
     }
 }
 
-impl IShape for Disk {
+impl Shape for Disk {
     fn object_bound(&self) -> Bounds3f {
         Bounds3f::from_points(
             Point3f::new(-self.radius, -self.radius, self.height),
@@ -52,11 +51,11 @@ impl IShape for Disk {
 
         // compute plane intersection for disk
         // reject disk intersection for rays parallel to the disk's plane
-        if r.d().z == 0.0 { return false; }
+        if r.d.z == 0.0 { return false; }
 
-        let t_shape_hit = (self.height - r.o().z) / r.d().z;
+        let t_shape_hit = (self.height - r.o.z) / r.d.z;
 
-        if t_shape_hit <= 0.0 || t_shape_hit >= r.t_max() { return false; }
+        if t_shape_hit <= 0.0 || t_shape_hit >= r.t_max { return false; }
 
         // see if hit point is inside disk radii and phi_max
         let mut p_hit = ray.find_point(t_shape_hit);
@@ -89,13 +88,13 @@ impl IShape for Disk {
         let p_error = Vector3f::new(0.0, 0.0, 0.0);
 
         // initialize surface interaction from parametric information
-        let shape = Some(Arc::new(Shape::from(*self)));
-        let mut s = SurfaceInteraction::new(&p_hit, &p_error, &Point2f::new(u, v), &-ray.d(), &dpdu, &dpdv, &dndu, &dndv, ray.time(), shape);
+        let shape = Some(Arc::new((*self).into()));
+        let mut s = SurfaceInteraction::new(&p_hit, &p_error, &Point2f::new(u, v), &-ray.d, &dpdu, &dpdv, &dndu, &dndv, ray.time, shape);
         *isect = self.object_to_world.transform_surface_interaction(&mut s);
 
         *t_hit = t_shape_hit;
 
-        return true;
+        true
 
     }
 
@@ -107,11 +106,11 @@ impl IShape for Disk {
 
         // compute plane intersection for disk
         // reject disk intersection for rays parallel to the disk's plane
-        if r.d().z == 0.0 { return false; }
+        if r.d.z == 0.0 { return false; }
 
-        let t_shape_hit = (self.height - r.o().z) / r.d().z;
+        let t_shape_hit = (self.height - r.o.z) / r.d.z;
 
-        if t_shape_hit <= 0.0 || t_shape_hit >= r.t_max() { return false; }
+        if t_shape_hit <= 0.0 || t_shape_hit >= r.t_max { return false; }
 
         // see if hit point is inside disk radii and phi_max
         let p_hit = ray.find_point(t_shape_hit);
@@ -128,22 +127,22 @@ impl IShape for Disk {
 
         if phi > self.phi_max { return false; }
 
-        return true;
+        true
     }
 
     fn area(&self) -> f32 {
-        return self.phi_max * 0.5 * (self.radius * self.radius - self.inner_radius * self.inner_radius)
+        self.phi_max * 0.5 * (self.radius * self.radius - self.inner_radius * self.inner_radius)
     }
 
-    fn sample(&self, u: &Point2f) -> Interaction {
+    fn sample(&self, u: &Point2f, pdf: &mut Float) -> Interactions {
         unimplemented!()
     }
 
-    fn sample_interaction(&self, i: &Interaction, u: &Point2f) -> Interaction {
+    fn sample_interaction(&self, i: &Interactions, u: &Point2f, pdf: &mut Float) -> Interactions {
         unimplemented!()
     }
 
-    fn pdf(&self, i: &Interaction, wi: &Vector3f) -> f32 {
+    fn pdf(&self, i: &Interactions, wi: &Vector3f) -> f32 {
         unimplemented!()
     }
 
