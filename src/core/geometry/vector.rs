@@ -1,10 +1,11 @@
-use num;
+#![allow(clippy::suspicious_arithmetic_impl)]
 use super::point::{Point2, Point3};
 use super::normal::Normal3;
 use crate::core::pbrt::{Float};
 use std::ops::{Add, Mul, AddAssign, MulAssign, SubAssign, Sub, Div, DivAssign, Index, IndexMut, Neg};
 use num::{Signed, Zero, One};
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
+use std::fmt;
 
 pub type Vector2i = Vector2<isize>;
 pub type Vector2f = Vector2<Float>;
@@ -131,38 +132,25 @@ where T: Neg<Output=T>
     }
 }
 
-impl<T> Mul for Vector2<T>
-where T: Copy + Mul<T, Output=T>
-{
-    type Output = Vector2<T>;
-
-    fn mul(self, rhs: Self) -> Self {
-        Vector2::<T> {
-            x: self.x * rhs.x,
-            y: self.y * rhs.y
-        }
-    }
-}
-
-impl<T> MulAssign for Vector2<T>
-where T: MulAssign
-{
-    fn mul_assign(&mut self, rhs: Self) {
-        self.x *= rhs.x;
-        self.y *= rhs.y;
-    }
-}
-
 impl<T> Mul<T> for Vector2<T>
 where T: Copy + Mul<T, Output=T>
 {
     type Output = Vector2<T>;
 
-    fn mul(self, rhs: T) -> Vector2<T> {
+    fn mul(self, rhs: T) -> Self {
         Vector2::<T> {
             x: self.x * rhs,
-            y: self.y * rhs,
+            y: self.y * rhs
         }
+    }
+}
+
+impl<T> MulAssign<T> for Vector2<T>
+where T: MulAssign + Copy
+{
+    fn mul_assign(&mut self, rhs: T) {
+        self.x *= rhs;
+        self.y *= rhs;
     }
 }
 
@@ -215,6 +203,13 @@ impl<T> IndexMut<usize> for Vector2<T> {
     }
 }
 
+impl<T> Display for Vector2<T>
+    where T: Display {
+    fn fmt(&self, f: &mut Formatter<'_>) ->fmt::Result {
+        write!(f, "[ {}, {} ]", self.x, self.y)
+    }
+}
+
 impl<T> From<Point2<T>> for Vector2<T> {
    fn from(p: Point2<T>) -> Self {
        Vector2::new(p.x, p.y)
@@ -264,7 +259,7 @@ impl<T> Vector3<T> {
     pub fn dot(&self, v: &Self) -> T
     where T: Copy + Add<T, Output=T> + Mul<T, Output=T>
     {
-        self.x * v.y + self.y * v.y + self.z * v.z
+        self.x * v.x + self.y * v.y + self.z * v.z
     }
 
     pub fn dot_norm(&self, n: &Normal3<T>) -> T
@@ -300,20 +295,16 @@ impl<T> Vector3<T> {
     pub fn max_dimension(&self) -> usize
     where T: PartialOrd
     {
-
-
         if self.x > self.y {
             if self.x > self.z {
                 0
             } else {
                 2
             }
+        } else if self.y > self.z {
+            1
         } else {
-            if self.y > self.z {
-                1
-            } else {
-                2
-            }
+            2
         }
     }
 
@@ -521,6 +512,13 @@ impl<T> IndexMut<usize> for Vector3<T> {
             2 => &mut self.z,
             _ => panic!("Wrong argument. i >= 0 && i < 2")
         }
+    }
+}
+
+impl<T> Display for Vector3<T>
+    where T: Display {
+    fn fmt(&self, f: &mut Formatter<'_>) ->fmt::Result {
+        write!(f, "[ {}, {}, {} ]", self.x, self.y, self.z)
     }
 }
 
