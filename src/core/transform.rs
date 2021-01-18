@@ -8,15 +8,29 @@ use crate::core::geometry::bounds::Bounds3f;
 use super::quaternion::*;
 use num::{Zero, One, Signed};
 use std::ops::{Mul, Add, Div, Sub};
-use std::sync::Arc;
 use std::fmt::Debug;
 use crate::core::interaction::SurfaceInteraction;
 use std::cell::Cell;
+use std::sync::Arc;
+
+pub fn solve_linearsystem_2x2(a: [[Float; 2]; 2], b: [Float; 2],
+                              x0: &mut Float, x1: &mut Float) -> bool {
+    let det = a[0][0] * a[1][1] - a[0][1] * a[1][0];
+
+    if det.abs() < 1.0e-10 { return false; }
+
+    *x0 = (a[1][1] * b[0] - a[0][1] * b[1]) / det;
+    *x1 = (a[0][0] * b[1] - a[1][0] * b[0]) / det;
+
+    if x0.is_nan() || x1.is_nan() { return false; }
+
+    true
+}
 
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub struct Transform {
-    pub m: Matrix4<Float>,
-    pub m_inv: Matrix4<Float>
+    pub m       : Matrix4<Float>,
+    pub m_inv   : Matrix4<Float>
 }
 
 impl Default for Transform {
@@ -29,6 +43,10 @@ impl Default for Transform {
 }
 
 impl Transform {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     pub fn from_matrix_slice(m: &[Float]) -> Self {
         let m = Matrix4::from_row_slice(m);
         let m_inv = m.try_inverse().unwrap();
@@ -43,6 +61,18 @@ impl Transform {
             m: *m,
             m_inv: inv
         }
+    }
+
+    pub fn has_scale(&self) -> bool {
+        macro_rules! not_one {
+            ($x:expr) => { ($x < 0.999 || $x > 1.001) }
+        }
+
+        let la2 = self.transform_vector(&Vector3f::new(1.0 , 0.0, 0.0)).length_squared();
+        let lb2 = self.transform_vector(&Vector3f::new(0.0 , 1.0, 0.0)).length_squared();
+        let lc2 = self.transform_vector(&Vector3f::new(0.0 , 0.0, 1.0)).length_squared();
+
+        not_one!(la2) || not_one!(lb2) || not_one!(lc2)
     }
 
     pub fn from_matrices(m: &Matrix4<Float>, m_inv: &Matrix4<Float>) -> Self {
@@ -191,6 +221,24 @@ impl Transform {
         Self { m: camera_to_world.try_inverse().unwrap(), m_inv: camera_to_world}
     }
 
+    pub fn orthographic(znear: Float, zfar: Float) -> Self {
+        Transform::scale(1.0, 1.0, 1.0 / (zfar - znear)) * Transform::translate(&Vector3f::new(0.0, 0.0, -znear))
+    }
+
+    pub fn perspective(fov: Float, n: Float, f: Float) -> Self {
+        // Perform projective divide for projection
+        let persp = Matrix4::from_row_slice(&[
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, f / (f - n), -f * n / (f - n),
+            0.0, 0.0, 1.0, 0.0
+        ]);
+
+        let inv_tan_ang = 1.0 / (radians(fov) / 2.0).tan();
+
+        Transform::scale(inv_tan_ang, inv_tan_ang, 1.0) * Transform::from_matrix(&persp)
+    }
+
     pub fn transform_point<T>(&self, p: &Point3<T>) -> Point3<T>
         where T: Mul<Float, Output=T> + Add<T, Output=T> + Add<Float, Output=T> + Div<T, Output=T> + One + PartialEq + Copy + Zero + Debug
     {
@@ -202,6 +250,8 @@ impl Transform {
         let yp = x*self.m[(1, 0)] + y*self.m[(1, 1)] + z*self.m[(1, 2)] + self.m[(1, 3)];
         let zp = x*self.m[(2, 0)] + y*self.m[(2, 1)] + z*self.m[(2, 2)] + self.m[(2, 3)];
         let wp = x*self.m[(3, 0)] + y*self.m[(3, 1)] + z*self.m[(3, 2)] + self.m[(3, 3)];
+
+        assert_ne!(wp, T::zero());
 
         if wp == T::one() {
             Point3::new(xp, yp, zp)
@@ -288,11 +338,11 @@ impl Transform {
 
     pub fn transform_ray(&self, r: &Ray) -> Ray {
         let mut o_error = Vector3f::default();
-        let mut o = self.transform_point_error(&r.o(), &mut o_error);
-        let d = self.transform_vector(&r.d());
+        let mut o = self.transform_point_error(&r.o, &mut o_error);
+        let d = self.transform_vector(&r.d);
 
         let l_squared = d.length_squared();
-        let mut t_max = r.t_max();
+        let mut t_max = r.t_max;
 
         if l_squared > 0.0 {
             let dt = d.abs().dot(&o_error) / l_squared;
@@ -300,13 +350,32 @@ impl Transform {
             t_max -= dt;
         }
 
-        Ray::new(&o, &d, t_max, r.time(), r.medium())
+        let mut medium = None;
+        let mut diff = None;
+
+        if let Some(ref m) = r.medium {
+            medium = Some(m.clone());
+        }
+
+        if let Some(ref d) = r.diff {
+            let di = RayDifferential {
+                rx_origin: self.transform_point(&d.rx_origin),
+                ry_origin: self.transform_point(&d.ry_origin),
+                rx_direction: self.transform_vector(&d.rx_direction),
+                ry_direction: self.transform_vector(&d.ry_direction),
+                has_differentials: d.has_differentials
+            };
+
+            diff = Some(di)
+        }
+
+        Ray::new(&o, &d, t_max, r.time, medium, diff)
     }
 
     pub fn transform_ray_error(&self, r: &Ray, o_error: &mut Vector3f, d_error: &mut Vector3f) -> Ray {
-        let mut o = self.transform_point_error(&r.o(), o_error);
-        let d = self.transform_vector_error(&r.d(), d_error);
-        let t_max = r.t_max();
+        let mut o = self.transform_point_error(&r.o, o_error);
+        let d = self.transform_vector_error(&r.d, d_error);
+        let t_max = r.t_max;
         let length_squared = d.length_squared();
 
         if length_squared > 0.0 {
@@ -314,19 +383,7 @@ impl Transform {
             o += d * dt;
         }
 
-        Ray::new(&o, &d, t_max, r.time(), r.medium())
-    }
-
-    pub fn transform_raydifferential(&self, r: &RayDifferential) -> RayDifferential {
-        let tr = self.transform_ray(&r.r);
-        let mut ret = RayDifferential::new(&tr.o(), &tr.d(), tr.t_max(), tr.time(), tr.medium());
-        ret.has_differentials = r.has_differentials;
-        ret.rx_origin = self.transform_point(&r.rx_origin);
-        ret.rx_direction = self.transform_vector(&r.rx_direction);
-        ret.ry_origin = self.transform_point(&r.ry_origin);
-        ret.ry_direction = self.transform_vector(&r.ry_direction);
-
-        ret
+        Ray::new(&o, &d, t_max, r.time, r.medium.clone(), None)
     }
 
     pub fn transform_bounds(&self, b: &Bounds3f) -> Bounds3f {
@@ -343,12 +400,12 @@ impl Transform {
         ret
     }
 
-    pub fn transform_surface_interaction(&self, si: &mut SurfaceInteraction) -> SurfaceInteraction {
-        let mut ret = SurfaceInteraction::default();
-        ret.interaction_data.p = self.transform_point_abs_error(&si.interaction_data.p, &si.interaction_data.p_error, &mut ret.interaction_data.p_error);
-        ret.interaction_data.n = self.transform_normal(&si.interaction_data.n).normalize();
-        ret.interaction_data.wo = self.transform_vector(&si.interaction_data.wo);
-        ret.interaction_data.time = si.interaction_data.time;
+    pub fn transform_surface_interaction<'a>(&self, si: &SurfaceInteraction<'a>) -> SurfaceInteraction<'a> {
+        let mut ret = SurfaceInteraction::<'a>::default();
+        ret.p = self.transform_point_abs_error(&si.p, &si.p_error, &mut ret.p_error);
+        ret.n = self.transform_normal(&si.n).normalize();
+        ret.wo = self.transform_vector(&si.wo);
+        ret.time = si.time;
         ret.uv = si.uv;
         ret.dpdu = self.transform_vector(&si.dpdu);
         ret.dpdv = self.transform_vector(&si.dpdv);
@@ -359,7 +416,7 @@ impl Transform {
         ret.shading.dpdv = self.transform_vector(&si.shading.dpdv);
         ret.shading.dndu = self.transform_normal(&si.shading.dndu);
         ret.shading.dndv = self.transform_normal(&si.shading.dndv);
-        ret.shading.n = ret.shading.n.face_foward(&ret.interaction_data.n);
+        ret.shading.n = ret.shading.n.face_foward(&ret.n);
         ret.dudx = Cell::new(si.dudx.get());
         ret.dvdx = Cell::new(si.dvdx.get());
         ret.dudy = Cell::new(si.dudy.get());
@@ -368,7 +425,7 @@ impl Transform {
         ret.dpdy = Cell::new(self.transform_vector(&si.dpdy.get()));
         ret.shape = si.get_shape();
         ret.primitive = si.get_primitive();
-        ret.bsdf = si.get_bsdf();
+        ret.bsdf = None;
         ret.bssrdf = si.get_bssrdf();
 
         ret
@@ -422,7 +479,7 @@ impl From<Quaternion> for Transform {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AnimatedTransform {
     start_transform: Arc<Transform>,
     end_transform: Arc<Transform>,
@@ -438,6 +495,16 @@ pub struct AnimatedTransform {
     c3: [DerivativeTerm; 3],
     c4: [DerivativeTerm; 3],
     c5: [DerivativeTerm; 3]
+}
+
+impl Default for AnimatedTransform {
+    fn default() -> Self {
+        Self {
+            start_transform: Arc::new(Default::default()),
+            end_transform: Arc::new(Default::default()),
+            ..Default::default()
+        }
+    }
 }
 
 impl AnimatedTransform {
@@ -943,7 +1010,7 @@ impl AnimatedTransform {
                     theta);
 
             res.c1[2] = DerivativeTerm::new(
-                -t0z + t1z, (qperpw * qperpy * s000 - qperpx * qperpz * s000 -
+                -t0z + t1z, qperpw * qperpy * s000 - qperpx * qperpz * s000 -
                     q0y * q0z * s010 - qperpw * qperpx * s010 -
                     qperpy * qperpz * s010 - s020 + q0y * q0y * s020 +
                     qperpx * qperpx * s020 + qperpy * qperpy * s020 -
@@ -952,8 +1019,8 @@ impl AnimatedTransform {
                     qperpw * qperpx * s110 + qperpy * qperpz * s110 +
                     q0w * (q0y * (s000 - s100) + q0x * (-s010 + s110)) +
                     q0x * q0x * (s020 - s120) + s120 - q0y * q0y * s120 -
-                    qperpx * qperpx * s120 - qperpy * qperpy * s120),
-                (qperpw * qperpy * s001 - qperpx * qperpz * s001 -
+                    qperpx * qperpx * s120 - qperpy * qperpy * s120,
+                qperpw * qperpy * s001 - qperpx * qperpz * s001 -
                     q0y * q0z * s011 - qperpw * qperpx * s011 -
                     qperpy * qperpz * s011 - s021 + q0y * q0y * s021 +
                     qperpx * qperpx * s021 + qperpy * qperpy * s021 -
@@ -962,8 +1029,8 @@ impl AnimatedTransform {
                     qperpw * qperpx * s111 + qperpy * qperpz * s111 +
                     q0w * (q0y * (s001 - s101) + q0x * (-s011 + s111)) +
                     q0x * q0x * (s021 - s121) + s121 - q0y * q0y * s121 -
-                    qperpx * qperpx * s121 - qperpy * qperpy * s121),
-                (qperpw * qperpy * s002 - qperpx * qperpz * s002 -
+                    qperpx * qperpx * s121 - qperpy * qperpy * s121,
+                qperpw * qperpy * s002 - qperpx * qperpz * s002 -
                     q0y * q0z * s012 - qperpw * qperpx * s012 -
                     qperpy * qperpz * s012 - s022 + q0y * q0y * s022 +
                     qperpx * qperpx * s022 + qperpy * qperpy * s022 -
@@ -972,11 +1039,11 @@ impl AnimatedTransform {
                     qperpw * qperpx * s112 + qperpy * qperpz * s112 +
                     q0w * (q0y * (s002 - s102) + q0x * (-s012 + s112)) +
                     q0x * q0x * (s022 - s122) + s122 - q0y * q0y * s122 -
-                    qperpx * qperpx * s122 - qperpy * qperpy * s122));
+                    qperpx * qperpx * s122 - qperpy * qperpy * s122);
 
             res.c2[2] = DerivativeTerm::new(
                 0.,
-                (q0w * q0y * s000 - q0x * q0z * s000 - qperpw * qperpy * s000 +
+                q0w * q0y * s000 - q0x * q0z * s000 - qperpw * qperpy * s000 +
                     qperpx * qperpz * s000 - q0w * q0x * s010 - q0y * q0z * s010 +
                     qperpw * qperpx * s010 + qperpy * qperpz * s010 +
                     q0x * q0x * s020 + q0y * q0y * s020 - qperpx * qperpx * s020 -
@@ -989,8 +1056,8 @@ impl AnimatedTransform {
                     2.0 * q0w * qperpy * s000 * theta + 2.0 * q0x * qperpz * s000 * theta +
                     2.0 * q0x * qperpw * s010 * theta + 2.0 * q0w * qperpx * s010 * theta +
                     2.0 * q0z * qperpy * s010 * theta + 2.0 * q0y * qperpz * s010 * theta -
-                    4.0 * q0x * qperpx * s020 * theta - 4.0 * q0y * qperpy * s020 * theta),
-                (q0w * q0y * s001 - q0x * q0z * s001 - qperpw * qperpy * s001 +
+                    4.0 * q0x * qperpx * s020 * theta - 4.0 * q0y * qperpy * s020 * theta,
+                q0w * q0y * s001 - q0x * q0z * s001 - qperpw * qperpy * s001 +
                     qperpx * qperpz * s001 - q0w * q0x * s011 - q0y * q0z * s011 +
                     qperpw * qperpx * s011 + qperpy * qperpz * s011 +
                     q0x * q0x * s021 + q0y * q0y * s021 - qperpx * qperpx * s021 -
@@ -1003,8 +1070,8 @@ impl AnimatedTransform {
                     2.0 * q0w * qperpy * s001 * theta + 2.0 * q0x * qperpz * s001 * theta +
                     2.0 * q0x * qperpw * s011 * theta + 2.0 * q0w * qperpx * s011 * theta +
                     2.0 * q0z * qperpy * s011 * theta + 2.0 * q0y * qperpz * s011 * theta -
-                    4.0 * q0x * qperpx * s021 * theta - 4.0 * q0y * qperpy * s021 * theta),
-                (q0w * q0y * s002 - q0x * q0z * s002 - qperpw * qperpy * s002 +
+                    4.0 * q0x * qperpx * s021 * theta - 4.0 * q0y * qperpy * s021 * theta,
+                q0w * q0y * s002 - q0x * q0z * s002 - qperpw * qperpy * s002 +
                     qperpx * qperpz * s002 - q0w * q0x * s012 - q0y * q0z * s012 +
                     qperpw * qperpx * s012 + qperpy * qperpz * s012 +
                     q0x * q0x * s022 + q0y * q0y * s022 - qperpx * qperpx * s022 -
@@ -1018,7 +1085,7 @@ impl AnimatedTransform {
                     2.0 * q0x * qperpw * s012 * theta + 2.0 * q0w * qperpx * s012 * theta +
                     2.0 * q0z * qperpy * s012 * theta + 2.0 * q0y * qperpz * s012 * theta -
                     4.0 * q0x * qperpx * s022 * theta -
-                    4.0 * q0y * qperpy * s022 * theta));
+                    4.0 * q0y * qperpy * s022 * theta);
 
             res.c3[2] = DerivativeTerm::new(
                 0., -2.0 * (-(q0w * qperpy * s000) + q0x * qperpz * s000 +
@@ -1162,7 +1229,6 @@ impl AnimatedTransform {
         t.x = m[(0, 3)];
         t.y = m[(1, 3)];
         t.z = m[(2, 3)];
-
         // Compute new transformation matrix without translation
         let mut new_m = *m;
 
@@ -1264,29 +1330,16 @@ impl AnimatedTransform {
     }
 
     pub fn transform_ray(&self, r: &Ray) -> Ray {
-        if !self.actually_animated || r.time() <= self.start_time {
+        if !self.actually_animated || r.time <= self.start_time {
             return self.start_transform.transform_ray(r);
-        } else if r.time() >= self.end_time {
+        } else if r.time >= self.end_time {
             return self.end_transform.transform_ray(r);
         }
 
         let mut t = Transform::default();
-        self.interpolate(r.time(), &mut t);
+        self.interpolate(r.time, &mut t);
 
         t.transform_ray(r)
-    }
-
-    pub fn transform_differential(&self, r: &RayDifferential) -> RayDifferential {
-        if !self.actually_animated || r.time() <= self.start_time {
-            return self.start_transform.transform_raydifferential(r);
-        } else if r.time() >= self.end_time {
-            return self.end_transform.transform_raydifferential(r);
-        }
-
-        let mut t = Transform::default();
-        self.interpolate(r.time(), &mut t);
-
-        t.transform_raydifferential(r)
     }
 
     pub fn motion_bounds(&self, b: &Bounds3f) -> Bounds3f {
