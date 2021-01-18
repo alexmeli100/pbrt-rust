@@ -3,28 +3,32 @@ use std::sync::Arc;
 use crate::core::primitive::{Primitive, Primitives};
 use crate::core::geometry::bounds::Bounds3f;
 use crate::core::interaction::SurfaceInteraction;
-use crate::core::geometry::ray::{Ray, BaseRay};
+use crate::core::geometry::ray::Ray;
 use crate::core::geometry::vector::Vector3f;
+use crate::core::paramset::ParamSet;
+use crate::core::light::AreaLights;
+use crate::core::material::{Materials, TransportMode};
+use bumpalo::Bump;
 
 const MAX_TODO: usize = 64;
 
 #[repr(C)]
 union LeafData {
-    split: Float,
-    one_primitive: i32,
-    primtive_offset_indices: i32
+    split                   : Float,
+    one_primitive           : i32,
+    primtive_offset_indices : i32
 }
 
 #[repr(C)]
 union ChildData {
-    flags: i32,
-    nprims: i32,
-    above_child: i32
+    flags       : i32,
+    nprims      : i32,
+    above_child : i32
 }
 
 struct KdAccelNode {
-    leaf: LeafData,
-    child: ChildData,
+    leaf    : LeafData,
+    child   : ChildData,
 }
 
 impl KdAccelNode {
@@ -106,8 +110,8 @@ impl Default for EdgeType {
 
 #[derive(Debug, Default)]
 struct BoundEdge {
-    t: Float,
-    prim_num: usize,
+    t        : Float,
+    prim_num : usize,
     edge_type: EdgeType
 }
 
@@ -123,28 +127,30 @@ impl BoundEdge {
 
 #[derive(Default, Copy, Clone)]
 struct KdToDo<'a> {
-    node: Option<&'a KdAccelNode>,
-    idx: usize,
-    t_min: Float,
-    t_max: Float
+    node    : Option<&'a KdAccelNode>,
+    idx     : usize,
+    t_min   : Float,
+    t_max   : Float
 }
 
 #[derive(Default)]
 pub struct KdTreeAccel {
-    isect_cost: isize,
-    traversal_cost: isize,
-    max_prims: usize,
-    empty_bonus: Float,
-    primtives: Vec<Arc<Primitives>>,
-    primitive_indices: Vec<usize>,
-    nodes: Vec<KdAccelNode>,
-    n_allocednodes: usize,
-    next_freenode: usize,
-    bounds: Bounds3f
+    isect_cost          : isize,
+    traversal_cost      : isize,
+    max_prims           : usize,
+    empty_bonus         : Float,
+    primtives           : Vec<Arc<Primitives>>,
+    primitive_indices   : Vec<usize>,
+    nodes               : Vec<KdAccelNode>,
+    n_allocednodes      : usize,
+    next_freenode       : usize,
+    bounds              : Bounds3f
 }
 
 impl KdTreeAccel {
-    pub fn new(p: Vec<Arc<Primitives>>, isect_cost: isize, traversal_cost: isize, empty_bonus: Float, max_prims: usize, max_depth: usize) -> Self {
+    pub fn new(
+        p: Vec<Arc<Primitives>>, isect_cost: isize, traversal_cost: isize,
+        empty_bonus: Float, max_prims: usize, max_depth: usize) -> Self {
         let mut kd = Self {
             isect_cost,
             traversal_cost,
@@ -208,17 +214,10 @@ impl KdTreeAccel {
     }
 
     fn build_tree(
-        &mut self,
-        node_num: usize,
-        node_bounds: &Bounds3f,
-        all_prim_bounds: &Vec<Bounds3f>,
-        prim_nums: &mut [usize],
-        n_primitives: usize,
-        depth: usize,
-        edges: &mut [Vec<BoundEdge>; 3],
-        prim0: &mut [usize],
-        prim1: &mut [usize],
-        bad_refines: isize
+        &mut self, node_num: usize, node_bounds: &Bounds3f,
+        all_prim_bounds: &Vec<Bounds3f>, prim_nums: &mut [usize],
+        n_primitives: usize, depth: usize, edges: &mut [Vec<BoundEdge>; 3],
+        prim0: &mut [usize], prim1: &mut [usize], bad_refines: isize
     ) {
         let mut bad_refines = bad_refines;
         // Get next free node from nodes array
@@ -371,7 +370,7 @@ impl KdTreeAccel {
                 bounds0,
                 all_prim_bounds,
                 &mut prim_nums[..],
-            n0,
+                n0,
                 depth - 1,
                 edges,
                 prim0,
@@ -402,8 +401,14 @@ impl KdTreeAccel {
             );
         }
     }
+}
 
-    pub fn intersect(&self, r: &Ray, isect: &mut SurfaceInteraction) -> bool {
+impl Primitive for KdTreeAccel {
+    fn world_bound(&self) -> Bounds3f {
+        return self.bounds
+    }
+
+    fn intersect(&self, r: &mut Ray, isect: &mut SurfaceInteraction) -> bool {
         let mut t_min = 0.0;
         let mut t_max = 0.0;
 
@@ -412,7 +417,7 @@ impl KdTreeAccel {
         }
 
         // Prepare to traverse kd-tree for ray
-        let inv_dir = Vector3f::new(1.0 / r.d().x, 1.0 / r.d().y, 1.0 / r.d().z);
+        let inv_dir = Vector3f::new(1.0 / r.d.x, 1.0 / r.d.y, 1.0 / r.d.z);
 
         let mut todo: [KdToDo; MAX_TODO] = [Default::default(); MAX_TODO];
         let mut todo_pos = 0;
@@ -424,14 +429,14 @@ impl KdTreeAccel {
 
         while let Some(n) = node {
             // Bail out if we found a hit closer than the current node
-            if r.t_max() < t_min { break; }
+            if r.t_max < t_min { break; }
 
             if !n.is_leaf() {
                 // Process kd-tree interior node
 
                 // Compute parametric distance along ray to split plane
                 let axis = n.split_axis();
-                let t_plane = (n.split_pos() - r.o()[axis as usize]) * inv_dir[axis as usize];
+                let t_plane = (n.split_pos() - r.o[axis as usize]) * inv_dir[axis as usize];
 
                 // Get node children pointers for ray
                 let first_child: Option<&KdAccelNode>;
@@ -439,7 +444,7 @@ impl KdTreeAccel {
                 let first_idx: usize;
                 let snd_idx: usize;
 
-                let below_first = (r.o()[axis as usize] < n.split_pos()) || (r.o()[axis as usize] == n.split_pos() && r.d()[axis as usize] <= 0.0);
+                let below_first = (r.o[axis as usize] < n.split_pos()) || (r.o[axis as usize] == n.split_pos() && r.d[axis as usize] <= 0.0);
 
                 if below_first {
                     first_idx = node_idx + 1;
@@ -513,7 +518,7 @@ impl KdTreeAccel {
         hit
     }
 
-    pub fn intersect_p(&self, r: &Ray) -> bool {
+    fn intersect_p(&self, r: &mut Ray) -> bool {
         let mut t_min = 0.0;
         let mut t_max = 0.0;
 
@@ -522,7 +527,7 @@ impl KdTreeAccel {
         }
 
         // Prepare to traverse kd-tree for ray
-        let inv_dir = Vector3f::new(1.0 / r.d().x, 1.0 / r.d().y, 1.0 / r.d().z);
+        let inv_dir = Vector3f::new(1.0 / r.d.x, 1.0 / r.d.y, 1.0 / r.d.z);
 
         let mut todo: [KdToDo; MAX_TODO] = [Default::default(); MAX_TODO];
         let mut todo_pos = 0;
@@ -573,7 +578,7 @@ impl KdTreeAccel {
 
                 // Compute parametric distance along ray to split plane
                 let axis = n.split_axis();
-                let t_plane = (n.split_pos() - r.o()[axis as usize]) * inv_dir[axis as usize];
+                let t_plane = (n.split_pos() - r.o[axis as usize]) * inv_dir[axis as usize];
 
                 // Get node children pointers for ray
                 let first_child: Option<&KdAccelNode>;
@@ -581,7 +586,7 @@ impl KdTreeAccel {
                 let first_idx: usize;
                 let snd_idx: usize;
 
-                let below_first = (r.o()[axis as usize] < n.split_pos()) || (r.o()[axis as usize] == n.split_pos() && r.d()[axis as usize] <= 0.0);
+                let below_first = (r.o[axis as usize] < n.split_pos()) || (r.o[axis as usize] == n.split_pos() && r.d[axis as usize] <= 0.0);
 
                 if below_first {
                     first_idx = node_idx + 1;
@@ -618,4 +623,27 @@ impl KdTreeAccel {
 
         false
     }
+
+    fn get_material(&self) -> Option<Arc<Materials>> {
+        panic!("BVH::get_material method called; should have gone to GeometricPrimitive")
+    }
+
+    fn get_area_light(&self) -> Option<Arc<AreaLights>> {
+        panic!("BVH::get_area_light method called; should have gone to GeometricPrimitive")
+    }
+
+    fn compute_scattering_functions<'a: 'a>(&self, isect: &mut SurfaceInteraction<'a>, arena: &'a Bump, mode: TransportMode, allow_multiple_lobes: bool) {
+        panic!("BVH::get_compute_scattering_functions method called; should have gone to GeometricPrimitive")
+    }
+}
+
+pub fn create_kdtree_accelerator(prims: Vec<Arc<Primitives>>, ps: &ParamSet) -> Arc<Primitives> {
+    let isect_cost = ps.find_one_int("itersectcost", 80);
+    let trav_cost = ps.find_one_int("traversalcost", 1);
+    let empty_bonus = ps.find_one_float("emptybonus", 0.5);
+    let max_prims = ps.find_one_int("maxprims", 1);
+    let max_depth = ps.find_one_int("maxdepth", 0);
+    let kd = KdTreeAccel::new(prims, isect_cost, trav_cost, empty_bonus, max_prims as usize, max_depth as usize);
+
+    Arc::new(kd.into())
 }
