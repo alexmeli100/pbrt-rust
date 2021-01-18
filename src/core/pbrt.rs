@@ -1,17 +1,34 @@
-use std::ops::{Sub, Add, Mul};
+use std::ops::{Sub, Add, Mul, Div, BitAnd};
 
 use crate::core::efloat::EFloat;
-use num::One;
+use num::{One, Zero, Num, Bounded};
+use num::traits::Pow;
 
 pub type Float = f32;
 
 pub const PI: Float = 3.14159265358979323846;
-pub const INFINITY: f32 = std::f32::INFINITY;
-pub const SHADOW_EPSILON: f32 = 0.0001;
-pub const MACHINE_EPSILON: f32 = std::f32::EPSILON * 0.5;
+pub const PI_OVER2: Float = 1.57079632679489661923;
+pub const PI_OVER4: Float = 0.78539816339744830961;
+pub const INV_PI: Float = 0.31830988618379067154;
+pub const INV2_PI: Float = 0.15915494309189533577;
+pub const INV4_PI: Float = 0.07957747154594766788;
+pub const INFINITY: Float = std::f32::INFINITY;
+pub const SHADOW_EPSILON: Float = 0.0001;
+pub const MACHINE_EPSILON: Float = std::f32::EPSILON * 0.5;
+
+#[derive(Default, Clone)]
+pub struct Options {
+    pub quick_render    : bool,
+    pub quiet           : bool,
+    pub cat             : bool,
+    pub to_ply          : bool,
+    pub image_file      : String,
+    pub integrator_name : String,
+    pub crop_window     : [[Float; 2]; 2]
+}
 
 #[inline(always)]
-fn float_to_bits(f: f32) -> u32 {
+pub fn float_to_bits(f: f32) -> u32 {
     let ui: u32;
 
     unsafe {
@@ -23,7 +40,7 @@ fn float_to_bits(f: f32) -> u32 {
 }
 
 #[inline(always)]
-fn bits_to_float(ui: u32) -> f32 {
+pub fn bits_to_float(ui: u32) -> f32 {
     let f: f32;
 
     unsafe {
@@ -68,6 +85,22 @@ pub fn next_float_down(v: f32) -> f32 {
     bits_to_float(ui)
 }
 
+pub fn log2_uint(v: u32) -> i32 {
+    31_i32 - v.leading_zeros() as i32
+}
+
+pub fn log2_int(v: i32) -> i32 {
+    log2_uint(v as u32)
+}
+
+pub fn log2_uint64(v: u64) -> i64 {
+    63 - v.leading_zeros() as i64
+}
+
+pub fn log2_int64(v: i64) -> i64 {
+    log2_uint64(v as u64)
+}
+
 pub fn lerp<T, S>(t: S, x: T, y: T) -> T
     where
         S: Copy + num::One + Sub<S, Output=S>,
@@ -95,10 +128,131 @@ where T: PartialOrd
     }
 }
 
+pub fn find_interval<F>(size: i32, pred: F) -> i32
+where F: Fn(i32) -> bool
+{
+    let mut first = 0;
+    let mut len = size;
+
+    while len > 0 {
+        let half = len >> 1;
+        let middle = first + half;
+
+        // Bisect range based on value of pred at middle
+        if pred(middle) {
+            first = middle + 1;
+            len -= half + 1;
+        } else {
+            len = half;
+        }
+    }
+
+    clamp(first - 1, 0, size - 2)
+}
+
 pub fn gamma(n: isize) -> Float {
     (n as Float * MACHINE_EPSILON) / (1.0 - n as Float * MACHINE_EPSILON)
 }
 
+pub fn inverse_gamma_correct(value: Float) -> Float {
+    if value <= 0.04045 { return value * 1.0 / 12.92 }
+
+    ((value + 0.055) * 1.0 / 1.055).pow(2.4)
+}
+
 pub fn quadratic(a: EFloat, b: EFloat, c: EFloat, t0: &mut EFloat, t1: &mut EFloat) -> bool {
     unimplemented!();
+}
+
+pub fn mod_<T>(a: T, b: T) -> T
+where
+    T: Copy + Zero + PartialOrd + num::Num
+{
+    let result = a - (a / b) * b;
+
+    match result < Zero::zero() {
+        true => result + b,
+        _ => result
+    }
+}
+
+pub fn is_power_of2<T>(v: T) -> bool
+where T: Copy + num::One + num::Zero + PartialOrd + BitAnd<T, Output=T> + Sub<T, Output=T>
+{
+    (v > T::zero()) && !((v & (v - T::one())) > T::zero())
+}
+
+pub fn round_up_pow2_32(mut v: i32) -> i32 {
+    v -= 1;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+
+    v + 1
+}
+
+pub fn round_up_pow2_64(mut v: i64) -> i64 {
+    v -= 1;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v |= v >> 32;
+
+    v + 1
+}
+
+pub fn erf(mut x: Float) -> Float {
+    // constants
+    let a1 = 0.254829592;
+    let a2 = -0.284496736;
+    let a3 = 1.421413741;
+    let a4 = -1.453152027;
+    let a5 = 1.061405429;
+    let p = 0.3275911;
+
+    // Save the sign of x
+    let sign = if x < 0.0 { -1 } else { 1 };
+    x = x.abs();
+
+    // A&S formula 7.1.26
+    let t = 1.0 / (1.0 + p * x);
+    let y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * (-x * x).exp();
+
+    sign as Float * y
+}
+
+pub fn erf_inv(mut x: Float) -> Float {
+    let mut p = 0.0;
+    x = clamp(x, -0.99999, 0.99999);
+    let mut w = -((1.0 - x) * (1.0 + x)).ln();
+
+    if w < 5.0 {
+        w = w - 2.5;
+        p = 2.81022636e-08;
+        p = 3.43273939e-07 + p * w;
+        p = -3.5233877e-06 + p * w;
+        p = -4.39150654e-06 + p * w;
+        p = 0.00021858087 + p * w;
+        p = -0.00125372503 + p * w;
+        p = -0.00417768164 + p * w;
+        p = 0.246640727 + p * w;
+        p = 1.50140941 + p * w;
+    } else {
+        w = w.sqrt() - 3.0;
+        p = -0.000200214257;
+        p = 0.000100950558 + p * w;
+        p = 0.00134934322 + p * w;
+        p = -0.00367342844 + p * w;
+        p = 0.00573950773 + p * w;
+        p = -0.0076224613 + p * w;
+        p = 0.00943887047 + p * w;
+        p = 1.00167406 + p * w;
+        p = 2.83297682 + p * w;
+    }
+
+    p * x
 }
