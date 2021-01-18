@@ -1,5 +1,5 @@
 use std::ops::{Add, Mul, AddAssign, Sub, SubAssign, Neg, MulAssign, Div, DivAssign, Index, IndexMut};
-use crate::core::geometry::vector::Vector3;
+use crate::core::geometry::vector::{Vector3, Vector3f};
 use crate::core::pbrt::Float;
 use num::{Signed};
 
@@ -49,13 +49,13 @@ impl<T> Normal3<T> {
     pub fn dot(&self, n: &Self) -> T
         where T: Copy + Add<T, Output=T> + Mul<T, Output=T>
     {
-        self.x * n.y + self.y * n.y + self.z * n.z
+        self.x * n.x + self.y * n.y + self.z * n.z
     }
 
     pub fn dot_vec(&self, v: &Vector3<T>) -> T
         where T: Copy + Add<T, Output=T> + Mul<T, Output=T>
     {
-        self.x * v.y + self.y * v.y + self.z * v.z
+        self.x * v.x + self.y * v.y + self.z * v.z
     }
 
     pub fn abs_dot_vec(&self, v: &Vector3<T>) -> T
@@ -117,6 +117,23 @@ impl<T> Normal3<T> {
 impl Normal3f {
     pub fn normalize(&self) -> Self {
         *self / self.length()
+    }
+
+    pub fn cross_vec(&self, v: &Vector3f) -> Vector3f {
+        assert!(!v.has_nan() && !self.has_nan());
+
+        let v1x = self.x as f64;
+        let v1y = self.y as f64;
+        let v1z = self.z as f64;
+        let v2x = v.x as f64;
+        let v2y = v.y as f64;
+        let v2z = v.z as f64;
+
+        Vector3f::new(
+            ((v1y * v2z) - (v1z * v2y)) as Float,
+            ((v1z * v2x) - (v1x * v2z)) as Float,
+            ((v1x * v2y) - (v1y * v2x)) as Float
+        )
     }
 }
 
