@@ -3,7 +3,9 @@ use crate::core::pbrt::*;
 use super::vector::{Vector3, Vector2};
 use std::ops::{Add, Mul, AddAssign, MulAssign, SubAssign, Sub, Div, DivAssign, Index, IndexMut, Neg};
 use num::{Zero, One};
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
+use std::fmt;
+use static_assertions::_core::fmt::Formatter;
 
 
 pub type Point2f = Point2<Float>;
@@ -62,6 +64,19 @@ impl<T> Point2<T> {
         where T: num::Float
     {
         Point2::new(self.x.abs(), self.y.abs())
+    }
+
+    pub fn floor(&self) -> Self
+        where T: num::Float
+    {
+        Point2::new(self.x.floor(), self.y.floor())
+    }
+
+    pub fn ceil(&self) -> Self
+        where T: num::Float
+    {
+        Point2::new(self.x.ceil(), self.y.ceil())
+
     }
 
     pub fn distance(&self, p2: &Point2<T>) -> T
@@ -242,17 +257,41 @@ impl<T> IndexMut<usize> for Point2<T> {
     }
 }
 
+impl From<Point2f> for Point2i {
+    fn from(p: Point2f) -> Self {
+        Self {
+            x: p.x as isize,
+            y: p.y as isize
+        }
+    }
+}
+
 impl<T> From<Point3<T>> for Point2<T> {
     fn from(p: Point3<T>) -> Self {
         Point2::new(p.x, p.y)
     }
 }
 
+impl From<Point2i> for Point2f
+{
+    fn from(p: Point2i) -> Self {
+        Point2f::new(p.x as Float, p.y as Float)
+    }
+}
+
+
 impl<T, U> From<Vector2<U>> for Point2<T>
 where T: From<U>
 {
     fn from(v: Vector2<U>) -> Self {
         Point2::new(T::from(v.x), T::from(v.y))
+    }
+}
+
+impl<T> Display for Point2<T>
+where T: Display {
+    fn fmt(&self, f: &mut Formatter<'_>) ->fmt::Result {
+        write!(f, "[ {}, {} ]", self.x, self.y)
     }
 }
 
@@ -366,6 +405,13 @@ impl<T> Add for Point3<T>
             y: self.y + rhs.y,
             z: self.z + self.z
         }
+    }
+}
+
+impl<T> Display for Point3<T>
+    where T: Display {
+    fn fmt(&self, f: &mut Formatter<'_>) ->fmt::Result {
+        write!(f, "[ {}, {}, {} ]", self.x, self.y, self.z)
     }
 }
 
@@ -551,5 +597,25 @@ impl<T, U> From<Vector3<U>> for Point3<T>
 {
     fn from(v: Vector3<U>) -> Self {
         Point3::new(T::from(v.x), T::from(v.y), T::from(v.z))
+    }
+}
+
+impl From<Point3f> for Point3i {
+    fn from(p: Point3f) -> Self {
+        Point3i::new(
+            p.x as isize,
+            p.y as isize,
+            p.z as isize
+        )
+    }
+}
+
+impl From<Point3i> for Point3f {
+    fn from(p: Point3i) -> Self {
+        Point3f::new(
+            p.x as Float,
+            p.y as Float,
+            p.z as Float
+        )
     }
 }
