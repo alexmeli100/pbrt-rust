@@ -13,30 +13,32 @@ use crate::core::paramset::ParamSet;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Sphere {
-    pub radius: Float,
-    pub zmin: Float,
-    pub zmax: Float,
-    pub theta_min: Float,
-    pub theta_max: Float,
-    pub phi_max: Float,
-    pub object_to_world: Transform,
-    pub world_to_object: Transform,
-    pub reverse_orientation: bool,
+    pub radius                   : Float,
+    pub zmin                     : Float,
+    pub zmax                     : Float,
+    pub theta_min                : Float,
+    pub theta_max                : Float,
+    pub phi_max                  : Float,
+    pub object_to_world          : Transform,
+    pub world_to_object          : Transform,
+    pub reverse_orientation      : bool,
     pub transform_swapshandedness: bool
 }
 
 impl Sphere {
-    pub fn new(object_to_world: Transform, world_to_object: Transform, reverse_orientation: bool, radius: Float, zmin: Float, zmax: Float, phi_max: Float) -> Self {
+    pub fn new(
+        object_to_world: Transform, world_to_object: Transform, reverse_orientation: bool,
+        radius: Float, zmin: Float, zmax: Float, phi_max: Float) -> Self {
         Self {
             object_to_world,
             world_to_object,
             reverse_orientation,
             radius,
-            zmin: clamp(zmin.min(zmax), -radius, radius),
-            zmax: clamp(zmin.max(zmax), -radius, radius),
-            theta_min: clamp(zmin / radius, -1.0, 1.0).acos(),
-            theta_max: clamp(zmax / radius, -1.0, 1.0).acos(),
-            phi_max: radians(clamp(phi_max, 0.0, 360.0)),
+            zmin                     : clamp(zmin.min(zmax), -radius, radius),
+            zmax                     : clamp(zmin.max(zmax), -radius, radius),
+            theta_min                : clamp(zmin / radius, -1.0, 1.0).acos(),
+            theta_max                : clamp(zmax / radius, -1.0, 1.0).acos(),
+            phi_max                  : radians(clamp(phi_max, 0.0, 360.0)),
             transform_swapshandedness: false
         }
     }
@@ -49,7 +51,7 @@ impl Shape for Sphere {
             Point3f::new(self.radius, self.radius, self.zmax))
     }
 
-    fn intersect(&self, r: &Ray, t_hit: &mut f32, isect: &mut SurfaceInteraction, test_aphatexture: bool) -> bool {
+    fn intersect(&self, r: &Ray, t_hit: &mut f32, isect: &mut SurfaceInteraction, _test_aphatexture: bool) -> bool {
         let mut phi;
         let mut p_hit;
 
@@ -282,11 +284,11 @@ impl Shape for Sphere {
         self.phi_max * self.radius * (self.zmax - self.zmin)
     }
 
-    fn sample(&self, u: &Point2<f32>) -> Interactions {
+    fn sample(&self, u: &Point2f, pdf: &mut Float) -> Interactions {
         unimplemented!()
     }
 
-    fn sample_interaction(&self, i: &Interactions, u: &Point2<f32>) -> Interactions {
+    fn sample_interaction(&self, i: &Interactions, u: &Point2f, pdf: &mut Float) -> Interactions {
         unimplemented!()
     }
 
