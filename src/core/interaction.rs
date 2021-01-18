@@ -5,18 +5,22 @@ use super::pbrt::*;
 use crate::core::geometry::normal::{Normal3f, Normal3};
 use super::medium::MediumInterface;
 use std::sync::Arc;
-use crate::core::medium::Medium;
+use crate::core::medium::{Medium, Mediums, PhaseFunctions};
 use crate::core::geometry::geometry::*;
 use crate::core::geometry::ray::Ray;
-use crate::core::primitive::Primitive;
+use crate::core::primitive::{Primitive, Primitives};
 use crate::core::reflection::BSDF;
 use crate::core::bssrdf::BSSRDF;
 use std::cell::Cell;
-use crate::core::shape::{Shape, IShape};
-use std::rc::Rc;
+use crate::core::shape::{Shapes, Shape};
+use crate::core::transform::solve_linearsystem_2x2;
+use bumpalo::Bump;
+use crate::core::material::TransportMode;
+use crate::core::spectrum::Spectrum;
+use crate::core::light::AreaLight;
 
-#[enum_dispatch(Interaction)]
-pub trait InteractionFace {
+#[enum_dispatch(Interactions)]
+pub trait Interaction {
     fn p(&self) -> Point3f;
     fn time(&self) -> Float;
     fn p_error(&self) -> Vector3f;
@@ -27,44 +31,41 @@ pub trait InteractionFace {
     fn spawn_ray(&self, d: &Vector3f) -> Ray {
         let o = offset_ray_origin(&self.p(), &self.p_error(), &self.n(), d);
 
-        Ray::new(&o, d, INFINITY, self.time(), self.get_medium_vec(d))
+        Ray::new(&o, d, INFINITY, self.time(), self.get_medium_vec(d), None)
     }
 
     fn spawn_rayto_point(&self, p2: &Point3f) -> Ray {
         let o = offset_ray_origin(&self.p(), &self.p_error(), &self.n(), &(*p2 - self.p()));
         let d = *p2 - o;
 
-        Ray::new(&o, &d, 1.0 - SHADOW_EPSILON, self.time(), self.get_medium_vec(&d))
+        Ray::new(&o, &d, 1.0 - SHADOW_EPSILON, self.time(), self.get_medium_vec(&d), None)
     }
 
-    fn spawn_rayto_interaction(&self, it: &Rc<Interaction>) -> Ray {
+    fn spawn_rayto_interaction(&self, it: &Interactions) -> Ray {
         let o = offset_ray_origin(&self.p(), &self.p_error(), &self.n(), &(it.p() - self.p()));
         let t = offset_ray_origin(&it.p(), &it.p_error(), &it.n(), &(o - it.p()));
 
         let d = t - o;
 
-        Ray::new(&o, &d, 1.0 - SHADOW_EPSILON, self.time(), self.get_medium_vec(&d))
+        Ray::new(&o, &d, 1.0 - SHADOW_EPSILON, self.time(), self.get_medium_vec(&d), None)
     }
 
-    fn get_medium_vec(&self, w: &Vector3f) -> Option<Arc<Medium>> {
+    fn get_medium_vec(&self, w: &Vector3f) -> Option<Arc<Mediums>> {
         if w.dot_norm(&self.n()) > 0.0 {
-            if let Some(ref m) = self.medium_interface() {
-                Some(m.outside.clone())
-            } else {
-                None
-            }
+            self.medium_interface()
+                .map_or_else(|| None, |m| m.outside.clone())
         } else {
-            if let Some(ref m) = self.medium_interface() {
-                Some(m.inside.clone())
-            } else {
-                None
-            }
+            self.medium_interface()
+                .map_or_else(|| None, |m| m.inside.clone())
         }
     }
 
-    fn get_medium(&self) -> Option<Arc<Medium>> {
+    fn get_medium(&self) -> Option<Arc<Mediums>> {
+        // TODO: Check eq
+        //assert!(Arc::ptr_eq())
+
         if let Some(ref m) = self.medium_interface() {
-            return Some(m.inside.clone());
+            return m.inside.clone();
         }
 
         None
@@ -79,79 +80,84 @@ pub trait InteractionFace {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+// For use with Light types
 pub struct InteractionData {
-    pub p: Point3f,
-    pub time: Float,
-    pub p_error: Vector3f,
-    pub wo: Vector3f,
-    pub n: Normal3f,
-    pub medium_interface: Option<MediumInterface>
-}
-
-impl InteractionData {
-    fn new(p: &Point3f, n: & Normal3f, p_error: &Vector3f, wo: &Vector3f, time: Float, medium_interface: Option<MediumInterface>) -> Self {
-        Self { p: *p, time, p_error: *p_error, wo: wo.normalize(), n: *n, medium_interface: medium_interface.clone() }
-    }
+    pub p                   : Point3f,
+    pub time                : Float,
+    pub p_error             : Vector3f,
+    pub wo                  : Vector3f,
+    pub n                   : Normal3f,
+    pub medium_interface    : Option<MediumInterface>
 }
 
 #[derive(Default)]
-pub struct SurfaceInteraction {
-    pub interaction_data: InteractionData,
-    pub uv: Point2f,
-    pub dpdu: Vector3f,
-    pub dpdv: Vector3f,
-    pub dndu: Normal3f,
-    pub dndv: Normal3f,
-    pub shape: Option<Arc<Shape>>,
-    pub shading: Shading,
-    pub primitive: Option<Arc<dyn Primitive>>,
-    pub bsdf: Option<Arc<BSDF>>,
-    pub bssrdf: Option<Arc<dyn BSSRDF>>,
-    pub dpdx: Cell<Vector3f>,
-    pub dpdy: Cell<Vector3f>,
-    pub dudx: Cell<Float>,
-    pub dvdx: Cell<Float>,
-    pub dudy: Cell<Float>,
-    pub dvdy: Cell<Float>
+pub struct SurfaceInteraction<'a> {
+    // Interaction Data
+    pub p                   : Point3f,
+    pub time                : Float,
+    pub p_error             : Vector3f,
+    pub wo                  : Vector3f,
+    pub n                   : Normal3f,
+    pub medium_interface    : Option<MediumInterface>,
+    //pub interaction_data: InteractionData,
+    pub uv                  : Point2f,
+    pub dpdu                : Vector3f,
+    pub dpdv                : Vector3f,
+    pub dndu                : Normal3f,
+    pub dndv                : Normal3f,
+    pub shape               : Option<Arc<Shapes>>,
+    pub shading             : Shading,
+    pub primitive           : Option<Arc<Primitives>>,
+    pub bsdf                : Option<&'a mut BSDF<'a>>,
+    pub bssrdf              : Option<Arc<dyn BSSRDF>>,
+    pub dpdx                : Cell<Vector3f>,
+    pub dpdy                : Cell<Vector3f>,
+    pub dudx                : Cell<Float>,
+    pub dvdx                : Cell<Float>,
+    pub dudy                : Cell<Float>,
+    pub dvdy                : Cell<Float>
 }
 
 #[derive(Debug, Default, Copy, Clone)]
 pub struct Shading {
-    pub n: Normal3f,
+    pub n   : Normal3f,
     pub dpdu: Vector3f,
     pub dpdv: Vector3f,
     pub dndu: Normal3f,
     pub dndv: Normal3f
 }
 
-impl SurfaceInteraction {
-    pub fn new(p: &Point3f, p_error: &Vector3f, uv: &Point2f, wo: &Vector3f, dpdu: &Vector3f, dpdv: &Vector3f, dndu: &Normal3f, dndv: &Normal3f, time: Float, shape: Option<Arc<Shape>>) -> Self {
-        let n: Normal3f = dpdu.cross(dpdv).normalize().into();
-        let mut interaction_data = InteractionData::new(p, &n.into(), p_error, wo, time, None);
+impl<'a> SurfaceInteraction<'a> {
+    pub fn new(p: &Point3f, p_error: &Vector3f, uv: &Point2f, wo: &Vector3f,
+               dpdu: &Vector3f, dpdv: &Vector3f, dndu: &Normal3f, dndv: &Normal3f,
+               time: Float, shape: Option<Arc<Shapes>>) -> Self {
+        let mut n: Normal3f = dpdu.cross(dpdv).normalize().into();
+        //let mut interaction_data = InteractionData::new(p, &n, p_error, wo, time, None);
         let mut shading = Shading {n, dpdu: *dpdu, dpdv: *dpdv, dndu: *dndu, dndv: *dndv };
 
 
         if let Some(ref s) = shape {
             if s.reverse_orientation() ^ s.transform_swapshandedness() {
-                interaction_data.n *= -1.0;
+                n *= -1.0;
                 shading.n *= -1.0;
             }
         }
 
-        let shape_c = match shape {
-            Some(ref s) => Some(s.clone()),
-            _ => None
-        };
         SurfaceInteraction {
-            interaction_data,
+            //interaction_data,
+            n,
+            time,
+            shape,
             shading,
+            p_error: *p_error,
+            wo: *wo,
+            p: *p,
             uv: *uv,
             dpdu: *dpdu,
             dpdv: *dpdv,
             dndu: *dndu,
             dndv: *dndv,
-            shape: shape_c,
+            medium_interface: None,
             primitive: None,
             bsdf: None,
             bssrdf: None,
@@ -164,7 +170,9 @@ impl SurfaceInteraction {
         }
     }
 
-    pub fn set_shading_geometry(&mut self, dpdus: &Vector3f, dpdvs: &Vector3f, dndus: &Normal3f, dndvs: &Normal3f, orientation_is_authoritative: bool) {
+    pub fn set_shading_geometry(
+        &mut self, dpdus: &Vector3f, dpdvs: &Vector3f, dndus: &Normal3f,
+        dndvs: &Normal3f, orientation_is_authoritative: bool) {
         self.shading.n = dpdus.cross(dpdvs).normalize().into();
 
         if let Some(ref s) = self.shape {
@@ -173,9 +181,9 @@ impl SurfaceInteraction {
             }
 
             if orientation_is_authoritative {
-                self.interaction_data.n = self.interaction_data.n.face_foward(&self.shading.n);
+                self.n = self.n.face_foward(&self.shading.n);
             } else {
-                self.shading.n = self.shading.n.face_foward(&self.interaction_data.n);
+                self.shading.n = self.shading.n.face_foward(&self.n);
             }
         }
 
@@ -185,65 +193,174 @@ impl SurfaceInteraction {
         self.shading.dndv = *dndvs;
     }
 
-    pub fn get_bsdf(&self) -> Option<Arc<BSDF>> {
-        match self.bsdf {
-            Some(ref bsdf) => Some(bsdf.clone()),
-            _ => None
-        }
-    }
 
-    pub fn get_shape(&self) -> Option<Arc<Shape>> {
-        match self.shape {
-            Some(ref shape) => Some(shape.clone()),
-            _ => None
-        }
+    pub fn get_shape(&self) -> Option<Arc<Shapes>> {
+        self.shape.clone()
     }
 
     pub fn get_bssrdf(&self) -> Option<Arc<dyn BSSRDF>> {
-        match self.bssrdf {
-            Some(ref bssrdf) => Some(bssrdf.clone()),
-            _ => None
+        self.bssrdf.clone()
+    }
+
+    pub fn get_primitive(&self) -> Option<Arc<Primitives>> {
+        self.primitive.clone()
+    }
+
+    pub fn compute_scattering_functions(
+        &mut self, r: &Ray, arena: &'a Bump,
+        allow_multiple_lobes: bool, mode: TransportMode) {
+        self.compute_differentials(r);
+        if let Some(p) = self.primitive.clone() {
+            p.compute_scattering_functions(self, arena, mode, allow_multiple_lobes)
         }
     }
 
-    pub fn get_primitive(&self) -> Option<Arc<dyn Primitive>> {
-        match self.primitive {
-            Some(ref primitive) => Some(primitive.clone()),
-            _ => None
+    pub fn compute_differentials(&mut self, r: &Ray) {
+        macro_rules! fail {
+            () => {{
+                self.dudx = Cell::new(0.0);
+                self.dvdx = Cell::new(0.0);
+                self.dudy = Cell::new(0.0);
+                self.dvdy = Cell::new(0.0);
+                self.dpdx = Cell::new(Default::default());
+                self.dpdy = Cell::new(Default::default());
+
+                return;
+            }}
+        }
+
+        if r.diff.is_none() { fail!() }
+
+        let diff = r.diff.as_ref().unwrap();
+
+        if !diff.has_differentials {
+            fail!()
+        }
+
+        let d = self.n.dot_vec(&Vector3f::new(self.p.x, self.p.y, self.p.z));
+        let tx =
+            -(self.n.dot_vec(&Vector3f::from(diff.rx_origin))) /
+             self.n.dot_vec(&diff.rx_direction);
+
+        if tx.is_infinite() || tx.is_nan() { fail!() }
+
+        let px = diff.rx_origin + diff.rx_direction * tx;
+        let ty =
+            -(self.n.dot_vec(&Vector3f::from(diff.ry_origin))) /
+            self.n.dot_vec(&diff.ry_direction);
+
+        if ty.is_infinite() || ty.is_nan() { fail!() }
+
+        let py = diff.ry_origin + diff.ry_direction * ty;
+        self.dpdx = Cell::new(px - self.p);
+        self.dpdy = Cell::new(py - self.p);
+
+        // Compute (u, v) offsets at auxilliary points
+
+        // Choose two dimensions to use for ray offset computation
+        let mut dim = [0; 2];
+
+        if self.n.x.abs() > self.n.y.abs() && self.n.x.abs() > self.n.z.abs() {
+            dim[0] = 1;
+            dim[1] = 2;
+        } else if self.n.y.abs() > self.n.z.abs() {
+            dim[0] = 0;
+            dim[1] = 2;
+        } else {
+            dim[0] = 0;
+            dim[1] = 1;
+        }
+
+        // Initialize A, Bx, and By matrices for offset computation
+        let A = [
+            [self.dpdu[dim[0]], self.dpdv[dim[0]]],
+            [self.dpdu[dim[1]], self.dpdv[dim[1]]]
+        ];
+        let Bx = [px[dim[0]] - self.p[dim[0]], px[dim[1]] - self.p[dim[1]]];
+        let By = [py[dim[0]] - self.p[dim[0]], py[dim[1]] - self.p[dim[1]]];
+
+        if !solve_linearsystem_2x2(A, Bx, self.dudx.get_mut(), self.dvdx.get_mut()) {
+            self.dudx.set(0.0);
+            self.dvdx.set(0.0);
+        }
+
+        if !solve_linearsystem_2x2(A, By, self.dudy.get_mut(), self.dvdy.get_mut()) {
+            self.dudy.set(0.0);
+            self.dvdy.set(0.0);
+        }
+    }
+
+    pub fn le(&self, w: &Vector3f) -> Spectrum {
+        match self.primitive.as_ref().unwrap().get_area_light() {
+            Some(ref a) => a.l(self, w),
+            _          => Spectrum::new(0.0)
         }
     }
 }
 
-impl InteractionFace for SurfaceInteraction {
+impl<'a> Interaction for SurfaceInteraction<'a> {
+    #[inline]
     fn p(&self) -> Point3<f32> {
-        self.interaction_data.p
+        self.p
     }
 
+    #[inline]
     fn time(&self) -> f32 {
-        self.interaction_data.time
+        self.time
     }
 
+    #[inline]
     fn p_error(&self) -> Vector3<f32> {
-        self.interaction_data.p_error
+        self.p_error
     }
 
+    #[inline]
     fn wo(&self) -> Vector3<f32> {
-        self.interaction_data.wo
+        self.wo
     }
 
+    #[inline]
     fn n(&self) -> Normal3<f32> {
-        self.interaction_data.n
+        self.n
     }
 
+    #[inline]
     fn medium_interface(&self) -> Option<MediumInterface> {
-        match self.interaction_data.medium_interface {
-            Some(ref m) => Some(m.clone()),
-            _ => None
+        self.medium_interface.clone()
+    }
+}
+
+pub struct MediumInteraction {
+    // Interaction Data
+    pub p                   : Point3f,
+    pub time                : Float,
+    pub p_error             : Vector3f,
+    pub wo                  : Vector3f,
+    pub n                   : Normal3f,
+    pub medium_interface    : Option<MediumInterface>,
+    pub phase               : PhaseFunctions
+}
+
+impl MediumInteraction {
+    pub fn new(
+        p: &Point3f, wo: &Vector3f, time: Float,
+        medium: Option<MediumInterface>, phase: PhaseFunctions) -> Self {
+        Self {
+            time,
+            phase,
+            medium_interface: medium,
+            p               : *p,
+            wo              : *wo,
+            n               : Default::default(),
+            p_error         : Default::default()
         }
     }
 }
+
+
+
 
 #[enum_dispatch]
-pub enum Interaction {
-    SurfaceInteraction
+pub enum Interactions<'a> {
+    SurfaceInteraction(SurfaceInteraction<'a>)
 }
