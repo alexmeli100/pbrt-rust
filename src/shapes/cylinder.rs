@@ -1,10 +1,10 @@
 use crate::core::pbrt::{Float, radians, clamp, quadratic, PI, gamma};
 use crate::core::transform::Transform;
-use crate::core::shape::{IShape, Shape};
+use crate::core::shape::{Shape, Shapes};
 use crate::core::geometry::point::{Point2f, Point3f};
-use crate::core::interaction::{Interaction, SurfaceInteraction};
+use crate::core::interaction::{Interaction, SurfaceInteraction, Interactions};
 use crate::core::geometry::vector::{Vector3f, Vector3};
-use crate::core::geometry::ray::{Ray, BaseRay};
+use crate::core::geometry::ray::Ray;
 use crate::core::geometry::bounds::Bounds3f;
 use crate::core::efloat::EFloat;
 use crate::core::geometry::normal::Normal3f;
@@ -12,18 +12,20 @@ use std::sync::Arc;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Cylinder {
-    radius: Float,
-    zmax: Float,
-    zmin: Float,
-    phi_max: Float,
-    object_to_world: Transform,
-    world_to_object: Transform,
-    reverse_orientation: bool,
+    radius                   : Float,
+    zmax                     : Float,
+    zmin                     : Float,
+    phi_max                  : Float,
+    object_to_world          : Transform,
+    world_to_object          : Transform,
+    reverse_orientation      : bool,
     transform_swapshandedness: bool
 }
 
 impl Cylinder {
-    pub fn new(object_to_world: Transform, world_to_object: Transform, reverse_orientation: bool, radius: Float, zmin: Float, zmax: Float, phi_max: Float) -> Self {
+    pub fn new(
+        object_to_world: Transform, world_to_object: Transform, reverse_orientation: bool, 
+        radius: Float, zmin: Float, zmax: Float, phi_max: Float) -> Self {
         Self {
             object_to_world,
             world_to_object,
@@ -37,7 +39,7 @@ impl Cylinder {
     }
 }
 
-impl IShape for Cylinder {
+impl Shape for Cylinder {
     fn object_bound(&self) -> Bounds3f {
         Bounds3f::from_points(
            Point3f::new(-self.radius, -self.radius, self.zmin),
@@ -55,12 +57,12 @@ impl IShape for Cylinder {
 
         // compute quadratic sphere coefficients
         // Initialize EFloat ray coordinate values
-        let ox = EFloat::new(ray.o().x, o_err.x);
-        let oy = EFloat::new(ray.o().y, o_err.y);
-        let oz = EFloat::new(ray.o().z, o_err.z);
-        let dx = EFloat::new(ray.d().x, d_err.x);
-        let dy = EFloat::new(ray.d().y, o_err.y);
-        let dz = EFloat::new(ray.d().z, o_err.z);
+        let ox = EFloat::new(ray.o.x, o_err.x);
+        let oy = EFloat::new(ray.o.y, o_err.y);
+        let oz = EFloat::new(ray.o.z, o_err.z);
+        let dx = EFloat::new(ray.d.x, d_err.x);
+        let dy = EFloat::new(ray.d.y, o_err.y);
+        let dz = EFloat::new(ray.d.z, o_err.z);
         let a = dx * dx + dy * dy;
         let b = (dx * ox + dy * oy) * 2.0;
         let c = ox * ox + oy * oy - EFloat::from(self.radius) * EFloat::from(self.radius);
@@ -73,7 +75,7 @@ impl IShape for Cylinder {
         }
 
         // check quadratic shape t0 and t1 for nearest intersection
-        if t0.upper_bound() > ray.t_max() || t1.lower_bound() <= 0.0 {
+        if t0.upper_bound() > ray.t_max || t1.lower_bound() <= 0.0 {
             return false;
         }
 
@@ -81,7 +83,7 @@ impl IShape for Cylinder {
         if t_shape_hit.lower_bound() <= 0.0 {
             t_shape_hit = t1;
 
-            if t_shape_hit.upper_bound() > ray.t_max() {
+            if t_shape_hit.upper_bound() > ray.t_max {
                 return false;
             }
         }
@@ -107,7 +109,7 @@ impl IShape for Cylinder {
 
             t_shape_hit = t1;
 
-            if t1.upper_bound() > r.t_max() {
+            if t1.upper_bound() > r.t_max {
                 return false;
             }
 
@@ -160,13 +162,13 @@ impl IShape for Cylinder {
         let p_error = Vector3f::new(p_hit.x, p_hit.y, 0.0).abs() * gamma(3);
 
         // Initialize SurfaceInteraction from parametric information
-        let shape = Some(Arc::new(Shape::from(*self)));
-        let mut s = SurfaceInteraction::new(&p_hit, &p_error, &Point2f::new(u, v), &-ray.d(), &dpdu, &dpdv, &dndu, &dndv, ray.time(), shape);
+        let shape = Some(Arc::new((*self).into()));
+        let mut s = SurfaceInteraction::new(&p_hit, &p_error, &Point2f::new(u, v), &-ray.d, &dpdu, &dpdv, &dndu, &dndv, ray.time, shape);
         *isect = self.object_to_world.transform_surface_interaction(&mut s);
 
         *t_hit = t_shape_hit.into();
 
-        return true;
+        true
 
     }
 
@@ -181,12 +183,12 @@ impl IShape for Cylinder {
 
         // compute quadratic sphere coefficients
         // Initialize EFloat ray coordinate values
-        let ox = EFloat::new(ray.o().x, o_err.x);
-        let oy = EFloat::new(ray.o().y, o_err.y);
-        let oz = EFloat::new(ray.o().z, o_err.z);
-        let dx = EFloat::new(ray.d().x, d_err.x);
-        let dy = EFloat::new(ray.d().y, o_err.y);
-        let dz = EFloat::new(ray.d().z, o_err.z);
+        let ox = EFloat::new(ray.o.x, o_err.x);
+        let oy = EFloat::new(ray.o.y, o_err.y);
+        let oz = EFloat::new(ray.o.z, o_err.z);
+        let dx = EFloat::new(ray.d.x, d_err.x);
+        let dy = EFloat::new(ray.d.y, o_err.y);
+        let dz = EFloat::new(ray.d.z, o_err.z);
         let a = dx * dx + dy * dy;
         let b = (dx * ox + dy * oy) * 2.0;
         let c = ox * ox + oy * oy - EFloat::from(self.radius) * EFloat::from(self.radius);
@@ -199,7 +201,7 @@ impl IShape for Cylinder {
         }
 
         // check quadratic shape t0 and t1 for nearest intersection
-        if t0.upper_bound() > ray.t_max() || t1.lower_bound() <= 0.0 {
+        if t0.upper_bound() > ray.t_max || t1.lower_bound() <= 0.0 {
             return false;
         }
 
@@ -207,7 +209,7 @@ impl IShape for Cylinder {
         if t_shape_hit.lower_bound() <= 0.0 {
             t_shape_hit = t1;
 
-            if t_shape_hit.upper_bound() > ray.t_max() {
+            if t_shape_hit.upper_bound() > ray.t_max {
                 return false;
             }
         }
@@ -233,7 +235,7 @@ impl IShape for Cylinder {
 
             t_shape_hit = t1;
 
-            if t1.upper_bound() > r.t_max() {
+            if t1.upper_bound() > r.t_max {
                 return false;
             }
 
@@ -255,23 +257,23 @@ impl IShape for Cylinder {
             }
         }
 
-        return true;
+        true
 
     }
 
     fn area(&self) -> f32 {
-        return (self.zmax - self.zmin) * self.radius * self.phi_max;
+        (self.zmax - self.zmin) * self.radius * self.phi_max
     }
 
-    fn sample(&self, u: &Point2f) -> Interaction {
+    fn sample(&self, u: &Point2f, pdf: &mut Float) -> Interactions {
         unimplemented!()
     }
 
-    fn sample_interaction(&self, i: &Interaction, u: &Point2f) -> Interaction {
+    fn sample_interaction(&self, i: &Interactions, u: &Point2f, pdf: &mut Float) -> Interactions {
         unimplemented!()
     }
 
-    fn pdf(&self, i: &Interaction, wi: &Vector3f) -> f32 {
+    fn pdf(&self, i: &Interactions, wi: &Vector3f) -> f32 {
         unimplemented!()
     }
 
