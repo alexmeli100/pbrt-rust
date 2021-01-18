@@ -3,8 +3,8 @@ use std::ops::{Add, Sub, Mul, Div, Neg};
 
 #[derive(Debug, Default, Copy, Clone)]
 pub struct EFloat {
-    pub v: Float,
-    pub low: Float,
+    pub v   : Float,
+    pub low : Float,
     pub high: Float
 }
 
@@ -46,7 +46,7 @@ impl EFloat {
     }
 
     pub fn abs(&self) -> Self {
-        return if self.low >= 0.0 {
+        if self.low >= 0.0 {
             *self
         } else if self.high <= 0.0 {
             let mut r = EFloat::default();
@@ -76,7 +76,7 @@ impl From<Float> for EFloat {
 
 impl From<EFloat> for Float {
     fn from(ef: EFloat) -> Self {
-        return ef.v;
+        ef.v
     }
 }
 
