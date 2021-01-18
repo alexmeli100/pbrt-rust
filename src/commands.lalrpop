@@ -1,0 +1,280 @@
+use crate::pbrtparser::syntax::*;
+use crate::pbrtparser::lexer::*;
+use crate::pbrtparser::tokens::*;
+use crate::pbrtparser::pbrtparser::*;
+use crate::core::pbrt::Float;
+use crate::core::paramset::ParamSet;
+
+
+grammar;
+
+extern {
+    type Location = usize;
+    type Error    = Error;
+    enum Tokens {
+        "AttributeBegin"        => Tokens::AttributeBegin,
+        "AttributeEnd"          => Tokens::AttributeEnd,
+        "ActiveTransform"       => Tokens::ActiveTransform,
+        "All"                   => Tokens::All,
+        "EndTime"               => Tokens::EndTime,
+        "StartTime"             => Tokens::StartTime,
+        "AreaLightSource"       => Tokens::AreaLightSource,
+        "Accelerator"           => Tokens::Accelerator,
+        "ConcatTransform"       => Tokens::ConcatTransform,
+        "CoordinateSystem"      => Tokens::CoordinateSystem,
+        "CoordSysTransform"     => Tokens::CoordSysTransform,
+        "Camera"                => Tokens::Camera,
+        "Film"                  => Tokens::Film,
+        "Integrator"            => Tokens::Integrator,
+        "Include"               => Tokens::Include,
+        "Identity"              => Tokens::Identity,
+        "LightSource"           => Tokens::LightSource,
+        "LookAt"                => Tokens::LookAt,
+        "MakeNamedMaterial"     => Tokens::MakeNamedMaterial,
+        "MakeNamedMedium"       => Tokens::MakeNamedMedium,
+        "Material"              => Tokens::Material,
+        "MediumInterface"       => Tokens::MediumInterface,
+        "NamedMaterial"         => Tokens::NamedMaterial,
+        "ObjectBegin"           => Tokens::ObjectBegin,
+        "ObjectEnd"             => Tokens::ObjectEnd,
+        "ObjectInstance"        => Tokens::ObjectInstance,
+        "PixelFilter"           => Tokens::PixelFilter,
+        "ReverseOrientation"    => Tokens::ReverseOrientation,
+        "Rotate"                => Tokens::Rotate,
+        "Shape"                 => Tokens::Shape,
+        "Sampler"               => Tokens::Sampler,
+        "Scale"                 => Tokens::Scale,
+        "TransformBegin"        => Tokens::TransformBegin,
+        "TransformEnd"          => Tokens::TransformEnd,
+        "Transform"             => Tokens::Transform,
+        "Translate"             => Tokens::Translate,
+        "TransformTimes"        => Tokens::TransformTimes,
+        "Texture"               => Tokens::Texture,
+        "WorldBegin"            => Tokens::WorldBegin,
+        "WorldEnd"              => Tokens::WorldEnd,
+        "LeftBracket"           => Tokens::LeftBracket,
+        "RightBracket"          => Tokens::RightBracket,
+        "Number"                => Tokens::Number(<Float>),
+        "STR"                   => Tokens::STR(<String>),
+        "Comment"               => Tokens::Comment
+    }
+}
+
+pub Commands: Vec<PBRTCommands> = {
+    <(Cmd)+>
+    }
+
+Cmd = {
+    TransformTime,
+    Accelerator,
+    AttributeBegin,
+    AttributeEnd,
+    TransformBegin,
+    TransformEnd,
+    ObjectBegin,
+    ObjectEnd,
+    ObjectInstance,
+    WorldBegin,
+    WorldEnd,
+    LookAt,
+    CoordSys,
+    CoordTransform,
+    Camera,
+    Film,
+    Include,
+    Integrator,
+    AreaLight,
+    LightSource,
+    Material,
+    MakeMaterial,
+    NamedMaterial,
+    Sampler,
+    Shape,
+    Filter,
+    ReverseOrientation,
+    MakeNamedMedium,
+    MediumInterface,
+    Scale,
+    Translate,
+    Rotate,
+    Texture,
+    ConcatTransform,
+    Transform
+}
+
+TransformTime: PBRTCommands = {
+    "ActiveTransform" "All" => PBRTCommands::All,
+    "ActiveTransform" "StartTime" => PBRTCommands::StartTime,
+    "ActiveTransform" "EndTime" => PBRTCommands::EndTime,
+}
+
+AttributeBegin: PBRTCommands = {
+    "AttributeBegin" => PBRTCommands::AttributeBegin
+}
+
+AttributeEnd: PBRTCommands = {
+    "AttributeEnd" => PBRTCommands::AttributeEnd
+}
+
+TransformBegin: PBRTCommands = {
+    "TransformBegin" => PBRTCommands::TransformBegin
+}
+
+TransformEnd: PBRTCommands = {
+    "TransformEnd" => PBRTCommands::TransformEnd
+}
+
+ObjectEnd: PBRTCommands = {
+    "ObjectEnd" => PBRTCommands::ObjectEnd
+}
+
+WorldBegin: PBRTCommands = {
+    "WorldBegin" => PBRTCommands::WorldBegin
+}
+
+WorldEnd: PBRTCommands = {
+    "WorldEnd" => PBRTCommands::WorldEnd
+}
+
+ReverseOrientation: PBRTCommands = {
+    "ReverseOrientation" => PBRTCommands::WorldEnd
+}
+
+Accelerator: PBRTCommands = {
+    "Accelerator" <Str> <Params> => PBRTCommands::Accelerator((<>))
+}
+
+ObjectBegin: PBRTCommands = {
+    "ObjectBegin" <Str> => PBRTCommands::ObjectBegin(<>)
+}
+
+ObjectInstance: PBRTCommands = {
+    "ObjectInstance" <Str> => PBRTCommands::ObjectInstance(<>)
+}
+
+LookAt: PBRTCommands = {
+    "LookAt" <ex:Number> <ey:Number> <ez:Number>
+             <lx:Number> <ly:Number> <lz:Number>
+             <ux:Number> <uy:Number> <uz:Number> => {
+        PBRTCommands::LookAt([ex, ey, ez, lx, ly, lz, ux, uy, uz])
+    }
+}
+
+CoordSys: PBRTCommands = {
+    "CoordinateSystem" <Str> => PBRTCommands::CoordSys(<>)
+}
+
+CoordTransform: PBRTCommands = {
+    "CoordSysTransform" <Str> => PBRTCommands::CoordTransform(<>)
+}
+
+Camera: PBRTCommands = {
+    "Camera" <Str> <Params> => PBRTCommands::Camera((<>))
+}
+
+Film: PBRTCommands = {
+    "Film" <Str> <Params> => PBRTCommands::Film((<>))
+}
+
+Include: PBRTCommands = {
+    "Include" <Str> => PBRTCommands::Include(<>)
+}
+
+Integrator: PBRTCommands = {
+    "Integrator" <Str> <Params> => PBRTCommands::Integrator((<>))
+}
+
+AreaLight: PBRTCommands = {
+    "AreaLightSource" <Str> <Params> => PBRTCommands::AreaLight((<>))
+}
+
+LightSource: PBRTCommands = {
+    "LightSource" <Str> <Params> => PBRTCommands::LightSource((<>))
+}
+
+Material: PBRTCommands = {
+    "Material" <Str> <Params> => PBRTCommands::Material((<>))
+}
+
+MakeMaterial: PBRTCommands = {
+    "MakeNamedMaterial" <Str> <Params> => PBRTCommands::MakeNamedMaterial((<>))
+}
+
+MakeNamedMedium: PBRTCommands = {
+    "MakeNamedMedium" <Str> <Params> => PBRTCommands::MakeNamedMaterial((<>))
+}
+
+NamedMaterial: PBRTCommands = {
+    "NamedMaterial" <Str> => PBRTCommands::NamedMaterial((<>))
+}
+
+MediumInterface: PBRTCommands = {
+    "MediumInterface" <Str> <Str> => PBRTCommands::MediumInterface((<>))
+}
+
+Sampler: PBRTCommands = {
+    "Sampler" <Str> <Params> => PBRTCommands::Sampler((<>))
+}
+
+Shape: PBRTCommands = {
+    "Shape" <Str> <Params> => PBRTCommands::Shape((<>))
+}
+
+Filter: PBRTCommands = {
+    "PixelFilter" <Str> <Params> => PBRTCommands::Filter((<>))
+}
+
+Scale: PBRTCommands = {
+    "Scale" <x:Number> <y:Number> <z:Number> => PBRTCommands::Scale([x, y, z])
+}
+
+Translate: PBRTCommands = {
+    "Translate" <x:Number> <y:Number> <z:Number> => PBRTCommands::Translate([x, y, z])
+}
+
+Rotate: PBRTCommands = {
+    "Rotate" <angle:Number> <x:Number> <y:Number> <z:Number> => PBRTCommands::Rotate([angle, x, y, z])
+}
+
+ConcatTransform: PBRTCommands = {
+    "ConcatTransform" <Floats> => PBRTCommands::ConcatTransform(<>)
+}
+
+Transform: PBRTCommands = {
+    "Transform" <Floats> => PBRTCommands::Transform(<>)
+}
+
+Texture: PBRTCommands = {
+    "Texture" <name:Str> <ty:Str> <texname:Str> <params:Params> => PBRTCommands::Texture(TextureInfo{<>})
+}
+
+Params: ParamSet = {
+    <ps:(ParamList)*> => params(ps)
+}
+
+ParamList: ParamListItem = {
+    <s:Str> <vals:Array> => param_item(s, vals)
+}
+
+Array: ArrayVals = {
+    <Floats>   => ArrayVals::NUM(<>),
+    <Strings>  => ArrayVals::STR(<>)
+}
+
+Floats: Vec<Float> = {
+    <Number> => vec![<>],
+    "LeftBracket" <v:(Number)+> "RightBracket" => v
+}
+
+Strings: Vec<String> = {
+    <Str> => vec![<>],
+    "LeftBracket" <v:(Str)+> "RightBracket" => v
+}
+
+Number: Float = {
+    <"Number"> => <>
+}
+
+Str: String = {
+    <"STR"> => <>
+}
