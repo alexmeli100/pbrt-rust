@@ -12,6 +12,7 @@ use std::fmt::Debug;
 use crate::core::interaction::SurfaceInteraction;
 use std::cell::Cell;
 use std::sync::Arc;
+use log::error;
 
 pub fn solve_linearsystem_2x2(a: [[Float; 2]; 2], b: [Float; 2],
                               x0: &mut Float, x1: &mut Float) -> bool {
@@ -111,17 +112,17 @@ impl Transform {
 
     pub fn scale(x: Float, y: Float, z: Float) -> Self {
         let m = Matrix4::from_row_slice(&[
-            x, 0.0, 0.0, 0.0,
-            0.0, y, 0.0, 0.0,
-            0.0, 0.0, z, 0.0,
+            x,   0.0, 0.0, 0.0,
+            0.0, y,   0.0, 0.0,
+            0.0, 0.0, z,   0.0,
             0.0, 0.0, 0.0, 1.0
         ]);
 
         let m_inv = Matrix4::from_row_slice(&[
-            1.0/x, 0.0, 0.0, 0.0,
-            0.0, 1.0/y, 0.0, 0.0,
-            0.0, 0.0, 1.0/z, 0.0,
-            0.0, 0.0, 0.0, 1.0
+            1.0/x, 0.0,   0.0,   0.0,
+            0.0,   1.0/y, 0.0,   0.0,
+            0.0,   0.0,   1.0/z, 0.0,
+            0.0,   0.0,   0.0,   1.0
         ]);
 
         Self { m, m_inv }
@@ -173,7 +174,7 @@ impl Transform {
         let a = axis.normalize();
         let sin_theta = radians(theta).sin();
         let cos_theta = radians(theta).cos();
-        let mut m: Matrix4<Float> = Matrix4::zero();
+        let mut m: Matrix4<Float> = Matrix4::identity();
 
         m[(0, 0)] = a.x * a.x + (1.0 - a.x * a.x) * cos_theta;
         m[(0, 1)] = a.x * a.y * (1.0 - cos_theta) - a.z * sin_theta;
@@ -194,7 +195,7 @@ impl Transform {
     }
 
     pub fn look_at(pos: &Point3f, look: &Point3f, up: &Vector3f) -> Self {
-        let mut camera_to_world: Matrix4<Float> = Matrix4::zero();
+        let mut camera_to_world: Matrix4<Float> = Matrix4::identity();
 
         camera_to_world[(0, 3)] = pos.x;
         camera_to_world[(1, 3)] = pos.y;
@@ -202,6 +203,16 @@ impl Transform {
         camera_to_world[(3, 3)] = 1.0;
 
         let dir = (*look - *pos).normalize();
+
+        if (up.normalize().cross(&dir)).length() == 0.0 {
+            error!(
+                "\"up\" vector ({}, {}, {}) and viewing direction ({}, {}, {}) \
+                passed to LookAt are pointing in the same direction. Using\
+                the identity transformation.",
+                up.x, up.y, up.z, dir.x, dir.y, dir.z);
+            return Default::default();
+        }
+
         let right = up.normalize().cross(&dir).normalize();
         let new_up = dir.cross(&right);
 
@@ -239,8 +250,7 @@ impl Transform {
         Transform::scale(inv_tan_ang, inv_tan_ang, 1.0) * Transform::from_matrix(&persp)
     }
 
-    pub fn transform_point<T>(&self, p: &Point3<T>) -> Point3<T>
-        where T: Mul<Float, Output=T> + Add<T, Output=T> + Add<Float, Output=T> + Div<T, Output=T> + One + PartialEq + Copy + Zero + Debug
+    pub fn transform_point(&self, p: &Point3f) -> Point3f
     {
         let x = p.x;
         let y = p.y;
@@ -251,17 +261,16 @@ impl Transform {
         let zp = x*self.m[(2, 0)] + y*self.m[(2, 1)] + z*self.m[(2, 2)] + self.m[(2, 3)];
         let wp = x*self.m[(3, 0)] + y*self.m[(3, 1)] + z*self.m[(3, 2)] + self.m[(3, 3)];
 
-        assert_ne!(wp, T::zero());
+        assert_ne!(wp, 0.0);
 
-        if wp == T::one() {
+        if wp == 1.0 {
             Point3::new(xp, yp, zp)
         } else {
             Point3::new(xp, yp, zp) / wp
         }
     }
 
-    pub fn transform_point_error<T>(&self, p: &Point3<T>, p_error: &mut Vector3<T>) -> Point3<T>
-        where T: Mul<Float, Output=T> + Add<T, Output=T> + Add<Float, Output=T> + Div<T, Output=T> + Copy + Signed + One + PartialEq + Zero + Debug + From<Float>
+    pub fn transform_point_error(&self, p: &Point3f, p_error: &mut Vector3f) -> Point3f
     {
         let x = p.x;
         let y = p.y;
@@ -276,17 +285,52 @@ impl Transform {
         let y_abs_sum = (x*self.m[(1, 0)]).abs() + (y*self.m[(1, 1)]).abs() + (z*self.m[(1, 2)]).abs() + (self.m[(1, 3)]).abs();
         let z_abs_sum = (x*self.m[(2, 0)]).abs() + (y*self.m[(2, 1)]).abs() + (z*self.m[(2, 2)]).abs() + (self.m[(2, 3)]).abs();
 
-        *p_error = Vector3::new(x_abs_sum, y_abs_sum, z_abs_sum) * T::from(gamma(3));
+        *p_error = Vector3::new(x_abs_sum, y_abs_sum, z_abs_sum) * gamma(3);
+        assert_ne!(wp, 0.0);
 
-        if wp == T::one() {
+        if wp == 1.0 {
             Point3::new(xp, yp, zp)
         } else {
             Point3::new(xp, yp, zp) / wp
         }
     }
 
-    pub fn transform_point_abs_error<T>(&self, p: &Point3<T>, p_error: &Vector3<T>, abs_error: &mut Vector3<T>) -> Point3<T> {
-        unimplemented!()
+    pub fn transform_point_abs_errorf(&self, p: &Point3f, p_error: &Vector3f, abs_error: &mut Vector3f) -> Point3f {
+        let x = p.x;
+        let y = p.y;
+        let z = p.z;
+
+        let xp = x*self.m[(0,0)] + y*self.m[(0,1)] + z*self.m[(0,2)] + self.m[(0,3)];
+        let yp = x*self.m[(1,0)] + y*self.m[(1,1)] + z*self.m[(1,2)] + self.m[(1,3)];
+        let zp = x*self.m[(2,0)] + y*self.m[(2,1)] + z*self.m[(2,2)] + self.m[(2,3)];
+        let wp = x*self.m[(3,0)] + y*self.m[(3,1)] + z*self.m[(3,2)] + self.m[(3,3)];
+
+        abs_error.x =
+            (gamma(3) + 1.0) *
+                ((self.m[(0, 0)]).abs() * p_error.x + (self.m[(0, 1)]).abs() * p_error.y +
+                 (self.m[(0, 2)]).abs() * p_error.x) +
+            gamma(3) * (self.m[(0, 0)] * x).abs() + (self.m[(0, 1)] * y).abs() +
+                (self.m[(0, 2)] * z).abs() + (self.m[(0, 3)]).abs();
+        abs_error.y =
+            (gamma(3) + 1.0) *
+            ((self.m[(1, 0)]).abs() * p_error.x + (self.m[(1, 1)]).abs() * p_error.y +
+                (self.m[(1, 2)]).abs() * p_error.z) +
+            gamma(3) * ((self.m[(1, 0)] * x).abs() + (self.m[(1, 1)] * y).abs() +
+                (self.m[(1, 2)] * z).abs() + (self.m[(1, 3)]).abs());
+        abs_error.z =
+            (gamma(3) + 1.0) *
+            ((self.m[(2, 0)]).abs() * p_error.x + (self.m[(2, 1)]).abs() * p_error.y +
+                (self.m[(2, 2)]).abs() * p_error.z) +
+            gamma(3) * ((self.m[(2, 0)] * x).abs() + (self.m[(2, 1)] * y).abs() +
+                (self.m[(2, 2)] * z).abs() + (self.m[(2, 3)]).abs());
+
+        assert_ne!(wp, 0.0);
+
+        if wp == 1.0 {
+            Point3f::new(xp, yp, zp)
+        } else {
+            Point3f::new(xp, yp, zp) / wp
+        }
     }
 
     pub fn transform_vector<T>(&self, v: &Vector3<T>) -> Vector3<T>
@@ -402,7 +446,7 @@ impl Transform {
 
     pub fn transform_surface_interaction<'a>(&self, si: &SurfaceInteraction<'a>) -> SurfaceInteraction<'a> {
         let mut ret = SurfaceInteraction::<'a>::default();
-        ret.p = self.transform_point_abs_error(&si.p, &si.p_error, &mut ret.p_error);
+        ret.p = self.transform_point_abs_errorf(&si.p, &si.p_error, &mut ret.p_error);
         ret.n = self.transform_normal(&si.n).normalize();
         ret.wo = self.transform_vector(&si.wo);
         ret.time = si.time;
@@ -463,7 +507,7 @@ impl From<Quaternion> for Transform {
         let wy = q.v.y * q.w;
         let wz = q.v.z * q.w;
 
-        let mut m = Matrix4::zero();
+        let mut m = Matrix4::identity();
 
         m[(0, 0)] = 1.0 - 2.0 * (yy + zz);
         m[(0, 1)] = 2.0 * (xy + wz);
@@ -481,20 +525,20 @@ impl From<Quaternion> for Transform {
 
 #[derive(Debug, Clone)]
 pub struct AnimatedTransform {
-    start_transform: Arc<Transform>,
-    end_transform: Arc<Transform>,
-    start_time: Float,
-    end_time: Float,
-    actually_animated: bool,
-    has_rotation: bool,
-    t: [Vector3f; 2],
-    r: [Quaternion; 2],
-    s: [Matrix4<Float>; 2],
-    c1: [DerivativeTerm; 3],
-    c2: [DerivativeTerm; 3],
-    c3: [DerivativeTerm; 3],
-    c4: [DerivativeTerm; 3],
-    c5: [DerivativeTerm; 3]
+    start_transform     : Arc<Transform>,
+    end_transform       : Arc<Transform>,
+    start_time          : Float,
+    end_time            : Float,
+    actually_animated   : bool,
+    has_rotation        : bool,
+    t                   : [Vector3f; 2],
+    r                   : [Quaternion; 2],
+    s                   : [Matrix4<Float>; 2],
+    c1                  : [DerivativeTerm; 3],
+    c2                  : [DerivativeTerm; 3],
+    c3                  : [DerivativeTerm; 3],
+    c4                  : [DerivativeTerm; 3],
+    c5                  : [DerivativeTerm; 3]
 }
 
 impl Default for AnimatedTransform {
@@ -502,7 +546,18 @@ impl Default for AnimatedTransform {
         Self {
             start_transform: Arc::new(Default::default()),
             end_transform: Arc::new(Default::default()),
-            ..Default::default()
+            start_time: 0.0,
+            end_time: 0.0,
+            actually_animated: false,
+            has_rotation: false,
+            t: [Vector3f::default(); 2],
+            r: [Quaternion::default(); 2],
+            s: [Matrix4::identity(); 2],
+            c1: [DerivativeTerm::default(); 3],
+            c2: [DerivativeTerm::default(); 3],
+            c3: [DerivativeTerm::default(); 3],
+            c4: [DerivativeTerm::default(); 3],
+            c5: [DerivativeTerm::default(); 3]
         }
     }
 }
@@ -517,7 +572,7 @@ impl AnimatedTransform {
             has_rotation: false,
             t: [Vector3f::default(); 2],
             r: [Quaternion::default(); 2],
-            s: [Matrix4::zeros(); 2],
+            s: [Matrix4::identity(); 2],
             c1: [DerivativeTerm::default(); 3],
             c2: [DerivativeTerm::default(); 3],
             c3: [DerivativeTerm::default(); 3],
@@ -525,17 +580,20 @@ impl AnimatedTransform {
             c5: [DerivativeTerm::default(); 3]
         };
 
+        //println!("starttime: {}", start_time);
+
         Self::decompose(&res.start_transform.m, &mut res.t[0], &mut res.r[0], &mut res.s[0]);
         Self::decompose(&res.end_transform.m, &mut res.t[1], &mut res.r[1], &mut res.s[1]);
 
+        //println!("endtime: {}", start_time);
         // Flip R1[1] if needed to select shortest path
         if res.r[0].dot(&res.r[1]) < 0.0 { res.r[1] = -res.r[1]; }
-        let has_rotation = res.r[0].dot(&res.r[1]) < 0.9995;
+        res.has_rotation = res.r[0].dot(&res.r[1]) < 0.9995;
 
-        if has_rotation {
+        if res.has_rotation {
             let cos_theta = res.r[0].dot(&res.r[1]);
             let theta = clamp(cos_theta, -1.0, 1.0).acos();
-            let qperp = (res.r[1] - res.r[0] * theta).normalize();
+            let qperp = (res.r[1] - res.r[0] * cos_theta).normalize();
 
             let t0x = res.t[0].x;
             let t0y = res.t[0].y;
@@ -1240,11 +1298,12 @@ impl AnimatedTransform {
         new_m[(3, 3)] = 1.0;
 
         // Extract rotation R from transformation matrix
+        let mut norm: Float;
         let mut counter = 0;
         let mut r = new_m;
 
         loop {
-            let mut rnext = Matrix4::<Float>::zeros();
+            let mut rnext = Matrix4::<Float>::identity();
             let r_it = r.transpose().try_inverse().unwrap();
 
             for i in 0..4 {
@@ -1253,16 +1312,18 @@ impl AnimatedTransform {
                 }
             }
 
-            let mut norm: Float = 0.0;
+            norm = 0.0;
             for i in 0..3 {
-                let n = (r[(i, 0)] - rnext[(i, 0)]).abs() + (r[(i, 1)] - rnext[(i, 1)]).abs() + (r[(i, 2)] - rnext[(i, 2)]).abs();
+                let n = (r[(i, 0)] - rnext[(i, 0)]).abs() +
+                        (r[(i, 1)] - rnext[(i, 1)]).abs() +
+                        (r[(i, 2)] - rnext[(i, 2)]).abs();
                 norm = norm.max(n);
             }
 
             r = rnext;
             counter += 1;
 
-            if counter > 100 || norm < 0.0001 {
+            if counter >= 100 || norm <= 0.0001 {
                 break;
             }
         }
@@ -1282,10 +1343,11 @@ impl AnimatedTransform {
             return;
         }
 
-        let dt = (time - self.end_time) / (self.end_time - self.start_time);
+        let dt = (time - self.start_time) / (self.end_time - self.start_time);
 
         // Interpolate translation at dt
-        let trans = lerp(dt, self.t[0], self.t[1]);
+        //let trans = lerp(dt, self.t[0], self.t[1]);
+        let trans = self.t[0] * (1.0 - dt) + self.t[1] * dt;
 
         // Interpolate rotation at dt
         let rotate = slerp(&self.r[0], &self.r[1], dt);
@@ -1360,19 +1422,25 @@ impl AnimatedTransform {
     }
 
     pub fn bound_point_motion(&self, p: &Point3f) -> Bounds3f {
+        if !self.actually_animated {
+            return Bounds3f::from_point(&self.start_transform.transform_point(p));
+        }
+
         let mut bounds = Bounds3f::from_points(self.start_transform.transform_point(p), self.end_transform.transform_point(p));
         let cos_theta = self.r[0].dot(&self.r[1]);
-        let theta = clamp(cos_theta, -1.0, 1.0);
+        let theta = clamp(cos_theta, -1.0, 1.0).acos();
 
         for c in 0..3 {
-            let mut zeros = [0.0, 0.0, 0.0, 0.0];
-            let mut n_zero = 0;
+            let mut zeros = [0.0; 8];
+            let mut nzero = 0;
 
-            find_interval_zeros(self.c1[c].eval(p), self.c2[c].eval(p), self.c3[c].eval(p),
+            interval_find_zeros(self.c1[c].eval(p), self.c2[c].eval(p), self.c3[c].eval(p),
                                 self.c4[c].eval(p), self.c5[c].eval(p), theta,
-                                Interval::new(0.0, 1.0), &mut zeros, &mut n_zero, 8);
+                                Interval::new(0.0, 1.0), &mut zeros, &mut nzero, 8);
 
-            for i in 0..n_zero {
+            println!("{}", nzero);
+
+            for i in 0..nzero {
                 let pz = self.transform_point(lerp(zeros[i], self.start_time, self.end_time), p);
                 bounds = bounds.union_point(&pz);
             }
@@ -1413,6 +1481,9 @@ impl Interval {
 
     #[inline(always)]
     fn sin(&self) -> Self {
+        assert!(self.low >= 0.0);
+        assert!(self.high <= 2.0001 * PI);
+
         let mut sin_low = self.low.sin();
         let mut sin_high = self.high.sin();
 
@@ -1429,6 +1500,9 @@ impl Interval {
 
     #[inline(always)]
     fn cos(&self) -> Self {
+        assert!(self.low >= 0.0);
+        assert!(self.high <= 2.0001 * PI);
+
         let mut cos_low = self.low.cos();
         let mut cos_high = self.high.cos();
 
@@ -1467,32 +1541,34 @@ impl Mul for Interval {
     type Output = Self;
 
     fn mul(self, i: Self) -> Self::Output {
-        let low = (self.low * i.low).min(self.high * i.low).min((self.low * i.high).min(self.high * i.high));
-        let high = (self.low * i.low).max(self.high * i.low).max((self.low * i.high).max(self.high * i.high));
+        let low = ((self.low * i.low).min(self.high * i.low)).min((self.low * i.high).min(self.high * i.high));
+        let high = ((self.low * i.low).max(self.high * i.low)).max((self.low * i.high).max(self.high * i.high));
 
         Self::new(low, high)
     }
 }
 
-fn find_interval_zeros(c1: Float, c2: Float, c3: Float, c4: Float, c5: Float, theta: Float, i: Interval, zeros: &mut [Float], zero_count: &mut usize, depth: isize) {
+fn interval_find_zeros(c1: Float, c2: Float, c3: Float, c4: Float, c5: Float, theta: Float, i: Interval, zeros: &mut [Float], zero_count: &mut usize, depth: isize) {
     type I = Interval;
 
+    //println!("{}", c1);
+
     let c = I::from(2.0 * theta) * i;
-    let range = I::from(c1) + (I::from(c2) * I::from(c3) * i) * c.cos() * (I::from(c4) * I::from(c5) * i) * c.sin();
+    let range = I::from(c1) + (I::from(c2) + I::from(c3) * i) * c.cos() + (I::from(c4) + I::from(c5) * i) * c.sin();
 
     if range.low > 0.0 || range.high < 0.0 || range.low == range.high {
         return
     }
 
     if depth > 0 {
-        let mid = (i.low + i.high) / 0.5;
-        find_interval_zeros(c1, c2, c3, c4, c5, theta, Interval::new(i.low, mid), zeros, zero_count, depth - 1);
-        find_interval_zeros(c1, c2, c3, c4, c5, theta, Interval::new(mid, i.high), zeros, zero_count, depth - 1);
+        let mid = (i.low + i.high) * 0.5;
+        interval_find_zeros(c1, c2, c3, c4, c5, theta, Interval::new(i.low, mid), zeros, zero_count, depth - 1);
+        interval_find_zeros(c1, c2, c3, c4, c5, theta, Interval::new(mid, i.high), zeros, zero_count, depth - 1);
     } else {
-        let mut t_newton = (i.low + i.high) / 0.5;
+        let mut t_newton = (i.low + i.high) * 0.5;
 
         for _ in 0..4 {
-            let f_newton = c1 + (c2 + c3 * t_newton) * (2.0 * theta * t_newton).cos() * (c4 + c5 + t_newton) * (2.0 * theta * t_newton).sin();
+            let f_newton = c1 + (c2 + c3 * t_newton) * (2.0 * theta * t_newton).cos() + (c4 + c5 * t_newton) * (2.0 * theta * t_newton).sin();
             let fprime_newton = (c3 + 2.0 * (c4 + c5 * t_newton) * theta) * (2.0 * t_newton * theta).cos() +
                                      (c5 - 2.0 * (c2 + c3 * t_newton) * theta) * (2.0 * t_newton * theta).sin();
 
@@ -1500,11 +1576,12 @@ fn find_interval_zeros(c1: Float, c2: Float, c3: Float, c4: Float, c5: Float, th
                 break;
             }
 
-            t_newton = t_newton - f_newton / fprime_newton;
+            t_newton -= f_newton / fprime_newton;
         }
 
-        zeros[*zero_count] = t_newton;
-        *zero_count += 1;
-
+        if t_newton >= i.low - 1.0e-3 && t_newton < i.high + 1.0e-3 {
+            zeros[*zero_count] = t_newton;
+            *zero_count += 1;
+        }
     }
 }
