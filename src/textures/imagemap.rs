@@ -1,4 +1,4 @@
-use crate::core::texture::{TextureMapping2Ds, Texture, TextureMapping2D, TextureFloat, get_mapping2d, TextureSpec, Textures};
+use crate::core::texture::{TextureMapping2Ds, Texture, TextureMapping2D, TextureFloat, get_mapping2d, TextureSpec};
 use std::sync::Arc;
 use std::any::Any;
 use log::warn;
@@ -8,48 +8,39 @@ use lazy_static::lazy_static;
 use crate::core::mipmap::{MIPMap, ImageWrap, Clampable};
 use crate::core::interaction::SurfaceInteraction;
 use std::sync::Mutex;
+use ordered_float::OrderedFloat;
 use crate::core::pbrt::{Float, inverse_gamma_correct};
-use crate::core::spectrum::{Spectrum, RGBSpectrum, SpectrumType, SampledSpectrum};
+use crate::core::spectrum::{RGBSpectrum};
 use crate::core::fileutil::has_extension;
 use crate::core::geometry::point::{Point2i};
 use crate::core::imageio::read_image;
-use static_assertions::_core::cmp::Ordering;
 use crate::core::geometry::vector::Vector2f;
 use std::ops::{Mul, AddAssign, Div};
 use crate::core::transform::Transform;
 use crate::core::paramset::TextureParams;
 
-//pub enum TextureTypes
 lazy_static! {
     static ref TEXTURES: Mutex<BTreeMap<TexInfo, Box<dyn Any + Send + Sync>>> = Mutex::new(BTreeMap::new());
+}
+
+pub fn clear_cache() {
+    let c = TEXTURES.lock();
+    let mut cache = c.unwrap();
+    cache.clear();
 }
 
 pub type ImageTextureFloat = ImageTexture<Float>;
 pub type ImageTextureRGB = ImageTexture<RGBSpectrum>;
 
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq, Ord, PartialOrd)]
 pub struct TexInfo {
     filename     : String,
     do_trilinear : bool,
-    max_aniso    : Float,
-    scale        : Float,
+    max_aniso    : OrderedFloat<Float>,
+    scale        : OrderedFloat<Float>,
     gamma        : bool,
     wrap_mode    : ImageWrap
-}
-
-impl Eq for TexInfo{}
-
-impl PartialOrd for TexInfo {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        unimplemented!()
-    }
-}
-
-impl Ord for TexInfo {
-    fn cmp(&self, other: &Self) -> Ordering {
-        unimplemented!()
-    }
 }
 
 impl TexInfo {
@@ -59,8 +50,9 @@ impl TexInfo {
         gamma: bool, wrap_mode: ImageWrap) -> Self {
         Self {
             filename, do_trilinear,
-            max_aniso, scale,
-            gamma, wrap_mode
+            gamma, wrap_mode,
+            max_aniso: OrderedFloat::from(max_aniso),
+            scale: OrderedFloat::from(scale)
         }
     }
 }
