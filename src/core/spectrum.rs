@@ -1,32 +1,31 @@
-use crate::core::pbrt::{Float, lerp, clamp, find_interval, inverse_gamma_correct};
+use crate::core::pbrt::{Float, lerp, find_interval, inverse_gamma_correct};
 use lazy_static::lazy_static;
 use num::{Zero, One};
 use crate::core::cie::*;
 use pbrt_macros::{coefficient_spectrum};
-use static_assertions::_core::ops::Mul;
 
 pub type Spectrum = SampledSpectrum;
 
 lazy_static! {
-    static ref X: SampledSpectrum = SampledSpectrum::init_spectrum(&CIE_LAMBDA, &CIE_X, N_SPECTRAL_SAMPLES);
-    static ref Y: SampledSpectrum = SampledSpectrum::init_spectrum(&CIE_LAMBDA, &CIE_Y, N_SPECTRAL_SAMPLES);
-    static ref Z: SampledSpectrum = SampledSpectrum::init_spectrum(&CIE_LAMBDA, &CIE_Z, N_SPECTRAL_SAMPLES);
+    static ref X: SampledSpectrum = SampledSpectrum::init_spectrum_xyz(&CIE_LAMBDA, &CIE_X);
+    static ref Y: SampledSpectrum = SampledSpectrum::init_spectrum_xyz(&CIE_LAMBDA, &CIE_Y);
+    static ref Z: SampledSpectrum = SampledSpectrum::init_spectrum_xyz(&CIE_LAMBDA, &CIE_Z);
 
-    static ref RGB_REFL2_SPEC_WHITE: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_REFL2_SPECT_WHITE, N_RGB2_SPECT_SAMPLES);
-    static ref RGB_REFL2_SPEC_CYAN: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_REFL2_SPECT_CYAN, N_RGB2_SPECT_SAMPLES);
-    static ref RGB_REFL2_SPEC_MAGENTA: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_REFL2_SPECT_MAGENTA, N_RGB2_SPECT_SAMPLES);
-    static ref RGB_REFL2_SPEC_YELLOW: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_REFL2_SPECT_YELLOW, N_RGB2_SPECT_SAMPLES);
-    static ref RGB_REFL2_SPEC_RED: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_REFL2_SPECT_RED, N_RGB2_SPECT_SAMPLES);
-    static ref RGB_REFL2_SPEC_GREEN: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_REFL2_SPECT_GREEN, N_RGB2_SPECT_SAMPLES);
-    static ref RGB_REFL2_SPEC_BLUE: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_REFL2_SPECT_BLUE, N_RGB2_SPECT_SAMPLES);
+    static ref RGB_REFL2_SPEC_WHITE: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_REFL2_SPECT_WHITE);
+    static ref RGB_REFL2_SPEC_CYAN: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_REFL2_SPECT_CYAN);
+    static ref RGB_REFL2_SPEC_MAGENTA: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_REFL2_SPECT_MAGENTA);
+    static ref RGB_REFL2_SPEC_YELLOW: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_REFL2_SPECT_YELLOW);
+    static ref RGB_REFL2_SPEC_RED: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_REFL2_SPECT_RED);
+    static ref RGB_REFL2_SPEC_GREEN: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_REFL2_SPECT_GREEN);
+    static ref RGB_REFL2_SPEC_BLUE: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_REFL2_SPECT_BLUE);
 
-    static ref RGB_ILLUM2_SPEC_WHITE: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_ILLUM2_SPECT_WHITE, N_RGB2_SPECT_SAMPLES);
-    static ref RGB_ILLUM2_SPEC_CYAN: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_ILLUM2_SPECT_CYAN, N_RGB2_SPECT_SAMPLES);
-    static ref RGB_ILLUM2_SPEC_MAGENTA: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_ILLUM2_SPECT_MAGENTA, N_RGB2_SPECT_SAMPLES);
-    static ref RGB_ILLUM2_SPEC_YELLOW: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_ILLUM2_SPECT_YELLOW, N_RGB2_SPECT_SAMPLES);
-    static ref RGB_ILLUM2_SPEC_RED: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_ILLUM2_SPECT_RED, N_RGB2_SPECT_SAMPLES);
-    static ref RGB_ILLUM2_SPEC_GREEN: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_ILLUM2_SPECT_GREEN, N_RGB2_SPECT_SAMPLES);
-    static ref RGB_ILLUM2_SPEC_BLUE: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_ILLUM2_SPECT_BLUE, N_RGB2_SPECT_SAMPLES);
+    static ref RGB_ILLUM2_SPEC_WHITE: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_ILLUM2_SPECT_WHITE);
+    static ref RGB_ILLUM2_SPEC_CYAN: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_ILLUM2_SPECT_CYAN);
+    static ref RGB_ILLUM2_SPEC_MAGENTA: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_ILLUM2_SPECT_MAGENTA);
+    static ref RGB_ILLUM2_SPEC_YELLOW: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_ILLUM2_SPECT_YELLOW);
+    static ref RGB_ILLUM2_SPEC_RED: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_ILLUM2_SPECT_RED);
+    static ref RGB_ILLUM2_SPEC_GREEN: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_ILLUM2_SPECT_GREEN);
+    static ref RGB_ILLUM2_SPEC_BLUE: SampledSpectrum = SampledSpectrum::init_spectrum(&RGB2_SPECT_LAMBDA, &RGB_ILLUM2_SPECT_BLUE);
 }
 
 trait CoefficientSpectrum {
@@ -162,7 +161,7 @@ impl RGBSpectrum {
         )
     }
 
-    pub fn n() -> usize {
+    pub const fn n() -> usize {
         3
     }
 }
@@ -366,12 +365,12 @@ impl SampledSpectrum {
 
     }
 
-    fn init_spectrum(lambda: &[Float], vals: &[Float], n_samples: usize) -> Self {
+    fn init_spectrum_xyz(lambda: &[Float], vals: &[Float]) -> Self {
         let mut s = SampledSpectrum::default();
 
-        for i in 0..n_samples {
+        for i in 0..N_SPECTRAL_SAMPLES {
 
-            let wl0 = lerp(i as Float / n_samples as Float, SAMPLED_LAMBDA_START as Float, SAMPLED_LAMBDA_END as Float);
+            let wl0 = lerp(i as Float / N_SPECTRAL_SAMPLES as Float, SAMPLED_LAMBDA_START as Float, SAMPLED_LAMBDA_END as Float);
             let wl1 = lerp((i + 1) as Float / N_SPECTRAL_SAMPLES as Float, SAMPLED_LAMBDA_START as Float, SAMPLED_LAMBDA_END as Float);
 
             s.c[i] = average_spectrum_samples(lambda, vals, N_CIE_SAMPLES, wl0, wl1);
@@ -380,7 +379,21 @@ impl SampledSpectrum {
         s
     }
 
-    pub fn n() -> usize {
+    fn init_spectrum(lambda: &[Float], vals: &[Float]) -> Self {
+        let mut s = SampledSpectrum::default();
+
+        for i in 0..N_SPECTRAL_SAMPLES {
+
+            let wl0 = lerp(i as Float / N_SPECTRAL_SAMPLES as Float, SAMPLED_LAMBDA_START as Float, SAMPLED_LAMBDA_END as Float);
+            let wl1 = lerp((i + 1) as Float / N_SPECTRAL_SAMPLES as Float, SAMPLED_LAMBDA_START as Float, SAMPLED_LAMBDA_END as Float);
+
+            s.c[i] = average_spectrum_samples(lambda, vals, N_RGB2_SPECT_SAMPLES, wl0, wl1);
+        }
+
+        s
+    }
+
+    pub const fn n() -> usize {
         N_SPECTRAL_SAMPLES
     }
 }
@@ -420,6 +433,8 @@ fn sort_spectrum_samples(lambda: &mut [Float], vals: &mut [Float], n: usize) {
 }
 
 fn average_spectrum_samples(lambda: &[Float], vals: &[Float], n: usize, lambda_start: Float, lambda_end: Float) -> Float {
+    for i in 0..(n - 1) { assert!(lambda[i + 1] > lambda[i]); }
+    assert!(lambda_start < lambda_end);
     // Handle cases with out-of-bounds range or single sample only
     if lambda_end <= lambda[0] { return vals[0]; }
     if lambda_start >= lambda[n - 1] { return vals[n - 1]; }
@@ -430,22 +445,31 @@ fn average_spectrum_samples(lambda: &[Float], vals: &[Float], n: usize, lambda_s
     // Add contributions of constant segments before/after samples
     if lambda_start < lambda[0] { sum += vals[0] * (lambda[0] - lambda_start); }
     if lambda_end > lambda[n - 1] { sum += vals[n - 1] * (lambda_end - lambda[n - 1]); }
+    //println!("{}", sum);
 
     // Advance to first relevant wavelength segment
     let mut i = 0;
     while lambda_start > lambda[i + 1] { i += 1; }
+    assert!(i + 1 < n);
 
     let interp = |w: Float, i: usize| -> Float {
         lerp((w - lambda[i]) / (lambda[i + 1] - lambda[i]), vals[i], vals[i + 1])
     };
 
+    //println!("{}", i);
+   // println!("{}", sum);
+
     while i + 1 < n && lambda_end >= lambda[i] {
         let seg_lambda_start = lambda_start.max(lambda[i]);
         let seg_lambda_end = lambda_end.min( lambda[i + 1]);
-        sum += 0.5 * (interp(seg_lambda_start, i) + interp(seg_lambda_end, i) * (seg_lambda_end - seg_lambda_start));
+        //println!("{}, {}", interp(seg_lambda_start, i), )
+        //println!("seg_start: {}, seg_end: {}, lambdai: {}, lambdai+1: {}", seg_lambda_start, seg_lambda_end, lambda[i], lambda[i + 1]);
+        sum += 0.5 * (interp(seg_lambda_start, i) + interp(seg_lambda_end, i)) * (seg_lambda_end - seg_lambda_start);
         i += 1;
     }
 
+
+    //println!("{}", sum);
     sum / (lambda_end - lambda_start)
 }
 
@@ -488,6 +512,7 @@ fn reflectance_to_rgb(rgb: [Float; 3], r: &mut SampledSpectrum) {
     if rgb[0] <= rgb[1] && rgb[0] <= rgb[2] {
         // compute reflectance SampledSpectrum with rgb[0] as miniumum
         *r += *RGB_REFL2_SPEC_WHITE * rgb[0];
+        //println!("{}", r);
 
         if rgb[1] <= rgb[2] {
             *r += *RGB_REFL2_SPEC_CYAN * (rgb[1] - rgb[0]);
@@ -499,6 +524,7 @@ fn reflectance_to_rgb(rgb: [Float; 3], r: &mut SampledSpectrum) {
     } else if rgb[1] <= rgb[0] && rgb[1] <= rgb[2] {
         // compute reflectance SampledSpectrum with rgb[1] as miniumum
         *r += *RGB_REFL2_SPEC_WHITE * rgb[1];
+        //println!("{}", r);
 
         if rgb[0] <= rgb[2] {
             *r += *RGB_REFL2_SPEC_MAGENTA * (rgb[0] - rgb[1]);
@@ -510,17 +536,19 @@ fn reflectance_to_rgb(rgb: [Float; 3], r: &mut SampledSpectrum) {
     } else {
         // compute reflectance SampledSpectrum with rgb[0] as miniumum
         *r += *RGB_REFL2_SPEC_WHITE * rgb[2];
+        //println!("{}", r);
 
         if rgb[0] <= rgb[1] {
             *r += *RGB_REFL2_SPEC_YELLOW * (rgb[0] - rgb[2]);
-            *r += *RGB_REFL2_SPEC_BLUE * (rgb[1] - rgb[0]);
+            *r += *RGB_REFL2_SPEC_GREEN * (rgb[1] - rgb[0]);
         } else {
-            *r += *RGB_REFL2_SPEC_CYAN * (rgb[1] - rgb[2]);
-            *r += *RGB_REFL2_SPEC_YELLOW * (rgb[0] - rgb[1]);
+            *r += *RGB_REFL2_SPEC_YELLOW * (rgb[1] - rgb[2]);
+            *r += *RGB_REFL2_SPEC_RED * (rgb[0] - rgb[1]);
         }
     }
 
     *r *= 0.94;
+    //println!("{}", r);
 }
 
 fn illuminant_to_rgb(rgb: [Float; 3], r: &mut SampledSpectrum) {
@@ -552,10 +580,10 @@ fn illuminant_to_rgb(rgb: [Float; 3], r: &mut SampledSpectrum) {
 
         if rgb[0] <= rgb[1] {
             *r += *RGB_ILLUM2_SPEC_YELLOW * (rgb[0] - rgb[2]);
-            *r += *RGB_ILLUM2_SPEC_BLUE * (rgb[1] - rgb[0]);
+            *r += *RGB_ILLUM2_SPEC_GREEN * (rgb[1] - rgb[0]);
         } else {
-            *r += *RGB_ILLUM2_SPEC_CYAN * (rgb[1] - rgb[2]);
-            *r += *RGB_ILLUM2_SPEC_YELLOW * (rgb[0] - rgb[1]);
+            *r += *RGB_ILLUM2_SPEC_YELLOW * (rgb[1] - rgb[2]);
+            *r += *RGB_ILLUM2_SPEC_RED * (rgb[0] - rgb[1]);
         }
     }
 
