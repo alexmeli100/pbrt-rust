@@ -1,4 +1,3 @@
-#![allow(clippy::suspicious_arithmetic_impl)]
 use super::point::{Point2, Point3};
 use super::normal::Normal3;
 use crate::core::pbrt::{Float};
@@ -6,6 +5,7 @@ use std::ops::{Add, Mul, AddAssign, MulAssign, SubAssign, Sub, Div, DivAssign, I
 use num::{Signed, Zero, One};
 use std::fmt::{Debug, Display, Formatter};
 use std::fmt;
+use crate::core::geometry::normal::Normal3f;
 
 pub type Vector2i = Vector2<isize>;
 pub type Vector2f = Vector2<Float>;
@@ -50,7 +50,7 @@ impl<T> Vector2<T> {
     pub fn dot(&self, v: &Self) -> T
         where T: Copy + Add<T, Output=T> + Mul<T, Output=T>
     {
-        self.x * v.y + self.y * v.y
+        self.x * v.x + self.y * v.y
     }
 
     pub fn abs_dot(&self, v: &Self) -> T
@@ -319,7 +319,7 @@ impl<T> Vector3<T> {
         }
     }
 
-    pub fn face_foward_vec(&self, n: &Normal3<T>) -> Self
+    pub fn face_foward_norm(&self, n: &Normal3<T>) -> Self
         where T: Copy + PartialOrd + Add<T, Output=T> + Mul<T, Output=T> + Neg<Output=T>,
               Float: From<T>
     {
@@ -350,6 +350,22 @@ impl Vector3f {
             z: ((v1x * v2y) - (v1y * v2x)) as Float
         }
     }
+
+    pub fn cross_norm(&self, v: &Normal3f) -> Vector3f {
+        assert!(!v.has_nan() && !self.has_nan());
+
+        let v1x = self.x as f64;
+        let v1y = self.y as f64;
+        let v1z = self.z as f64;
+        let v2x = v.x as f64;
+        let v2y = v.y as f64;
+        let v2z = v.z as f64;
+
+        Vector3f::new(
+            ((v1y * v2z) - (v1z * v2y)) as Float,
+            ((v1z * v2x) - (v1x * v2z)) as Float,
+            ((v1x * v2y) - (v1y * v2x)) as Float)
+    }
 }
 
 impl<T> Add for Vector3<T>
@@ -361,7 +377,7 @@ where T: Copy + Add<T, Output=T>
         Vector3::<T> {
             x: self.x + rhs.x,
             y: self.y + rhs.y,
-            z: self.z + self.z
+            z: self.z + rhs.z
         }
     }
 }
