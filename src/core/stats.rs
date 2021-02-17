@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
-use state::{Storage, LocalStorage};
+use state::{Storage};
 use std::sync::Mutex;
-use combine::lib::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 
 type StatsCallbackFn = Box<dyn Fn(&mut StatsAccumulator) + Send>;
 
@@ -32,6 +32,12 @@ macro_rules! stat_counter {
             pub fn inc() {
                 let v = VALUE.get();
                 v.set(v.get() + 1);
+            }
+
+            #[allow(dead_code)]
+            pub fn add(value: u64) {
+                let v = VALUE.get();
+                v.set(v.get() + value);
             }
 
             fn report(accum: &mut StatsAccumulator) {
@@ -153,7 +159,7 @@ macro_rules! stat_float_distribution {
             }
 
             fn report(accum: &mut StatsAccumulator) {
-                accum.report_float_distribution(
+                accum.report_float_distributions(
                     $title,
                     SUM.get().get(),
                     COUNT.get().get(),
@@ -365,10 +371,114 @@ impl StatsAccumulator {
         self.ratios.clear();
     }
     
-    pub fn print<W: std::io::Write>(&self, writer: W) {
-        // TODO: print()
-        unimplemented!()
-    } 
+    pub fn print<W: std::io::Write>(&self, mut writer: W) {
+        writeln!(writer, "Statistics:").unwrap();
+        let mut to_print: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+        for (header, value) in self.counters.iter() {
+            if *value == 0 { continue; }
+
+            let (category, title) = get_category_and_title(header);
+            to_print
+                .entry(category.to_owned())
+                .or_insert_with(Vec::new)
+                .push(format!("    {:<42}               {:12}", title, value));
+        }
+
+        for (header, value) in self.memory_counters.iter() {
+            if *value == 0 { continue; }
+
+            let (category, title) = get_category_and_title(header);
+            let kb = *value as f64 / 1024.0;
+
+            let msg = if kb < 1024.0 {
+                format!("    {:<42}                  {:9.2} kiB", title, kb)
+            } else {
+                let mib = kb / 1024.0;
+
+                if mib < 1024.0 {
+                    format!("    {:<42}                  {:9.2} MiB", title, mib)
+                } else {
+                    let gib = mib / 1024.0;
+                    format!("    {:<42}                  {:9.2} GiB", title, gib)
+                }
+            };
+
+            to_print
+                .entry(category.to_owned())
+                .or_insert_with(Vec::new)
+                .push(msg);
+        }
+
+        for (name, value) in self.int_distribution_sums.iter() {
+            let c = self.int_distribution_counts[name];
+            if c == 0 { continue; }
+
+            let (category, title) = get_category_and_title(name);
+            let avg = *value as f64 / c as f64;
+            let min = self.int_distribution_mins[name];
+            let max = self.int_distribution_maxs[name];
+
+            to_print
+                .entry(category.to_owned())
+                .or_insert_with(Vec::new)
+                .push(format!(
+                    "    {:<42}                      {:.3} avg [range {} - {}]",
+                    title, avg, min, max))
+        }
+
+        for (name, value) in self.float_distribution_counts.iter() {
+            let c = self.float_distribution_counts[name];
+            if c == 0 { continue; }
+
+            let (category, title) = get_category_and_title(name);
+            let avg = *value as f64 / c as f64;
+            let min = self.float_distribution_mins[name];
+            let max = self.float_distribution_maxs[name];
+
+            to_print
+                .entry(category.to_owned())
+                .or_insert_with(Vec::new)
+                .push(format!(
+                    "    {:<42}                      {:.3} avg [range {} - {}]",
+                    title, avg, min, max));
+        }
+
+        for (header, (num, denom)) in self.percentages.iter() {
+            if *denom == 0 { continue; }
+
+            let (category, title) = get_category_and_title(header);
+
+            to_print
+                .entry(category.to_owned())
+                .or_insert_with(Vec::new)
+                .push(format!(
+                    "    {:<42}{:12} / {:12} ({:.2}%)",
+                    title, num, denom,
+                    (*num as f64 * 100.0) / *denom as f64));
+        }
+
+        for (header, (num, denom)) in self.ratios.iter() {
+            if *denom == 0 { continue; }
+
+            let (category, title) = get_category_and_title(header);
+
+            to_print
+                .entry(category.to_owned())
+                .or_insert_with(Vec::new)
+                .push(format!(
+                    "    {:<42}{:12} / {:12} ({:.2}x)",
+                    title, num, denom, *num as f64 / *denom as f64));
+        }
+
+        for (category, items) in to_print.iter() {
+            writeln!(writer, "  {}", category).unwrap();
+
+            for item in items.iter() {
+                writeln!(writer, "    {}", item).unwrap();
+            }
+        }
+    }
 }
 
 pub fn init_stats() {
@@ -381,8 +491,23 @@ pub fn print_stats<W: std::io::Write>(writer: W) {
     acc.print(writer);
 }
 
+pub fn clear_stats() {
+    let mut acc = STATS_ACCUMULATOR.get().lock().unwrap();
+    acc.clear()
+}
+
 pub fn report_stats() {
     let acc = &mut STATS_ACCUMULATOR.get().lock().unwrap();
 
     StatsRegisterer::call_callbacks(acc);
+}
+
+fn get_category_and_title(s: &str) -> (&str, &str) {
+    let ct = s.split('/').collect::<Vec<_>>();
+
+    if ct.len() > 1 {
+        (ct[0], ct[1])
+    } else {
+        ("", s)
+    }
 }
