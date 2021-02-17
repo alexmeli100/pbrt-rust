@@ -189,6 +189,20 @@ impl Bounds2f {
 
         (c, rad)
     }
+
+    pub fn union_pointf(&self, p: &Point2f) -> Self {
+        Self {
+            p_min: self.p_min.minf(p),
+            p_max: self.p_max.maxf(p)
+        }
+    }
+
+    pub fn union_boundsf(&self, b: &Self) -> Self {
+        Self {
+            p_min: self.p_min.minf(&b.p_min),
+            p_max: self.p_max.maxf(&b.p_max)
+        }
+    }
 }
 
 
@@ -225,6 +239,15 @@ impl<T> IndexMut<usize> for Bounds2<T>
             0 => &mut self.p_min,
             1 => &mut self.p_max,
             _ => panic!("Wrong argument. i >= 0 && i < 2")
+        }
+    }
+}
+
+impl From<Bounds2i> for Bounds2f {
+    fn from(b: Bounds2i) -> Self {
+        Bounds2f {
+            p_min: Point2f::from(b.p_min),
+            p_max: Point2f::from(b.p_max)
         }
     }
 }
@@ -303,11 +326,11 @@ impl<T> Bounds3<T>
     pub fn corner(&self, c: usize) -> Point3<T> {
         assert!(c < 8);
 
-        let x_i = c & 1;
-        let y_i = { if c & 2 != 0 {1} else {0} };
-        let z_i = { if c & 4 == 0 {1} else {0} };
+        let xi = c & 1;
+        let yi = { if c & 2 != 0 {1} else {0} };
+        let zi = { if c & 4 != 0 {1} else {0} };
 
-        Point3::new(self[x_i].x, self[y_i].y, self[z_i].z)
+        Point3::new(self[xi].x, self[yi].y, self[zi].z)
     }
 
     pub fn diagonal(&self) -> Vector3<T> {
