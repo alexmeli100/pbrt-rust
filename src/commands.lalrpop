@@ -62,7 +62,7 @@ extern {
 
 pub Commands: Vec<PBRTCommands> = {
     <(Cmd)+>
-    }
+}
 
 Cmd = {
     TransformTime,
