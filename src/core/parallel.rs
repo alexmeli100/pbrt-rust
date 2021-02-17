@@ -1,6 +1,5 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use crate::core::pbrt::{Float, float_to_bits, bits_to_float};
-use crossbeam::epoch::Atomic;
 
 pub struct AtomicFloat {
     bits: AtomicU32
@@ -17,7 +16,7 @@ impl AtomicFloat {
         let mut oldbits = self.bits.load(Ordering::Relaxed);
 
         loop {
-            let newbits = float_to_bits(bits_to_float(oldbits));
+            let newbits = float_to_bits(bits_to_float(oldbits) + v);
 
             match self.bits.compare_exchange_weak(oldbits, newbits, Ordering::SeqCst, Ordering::Relaxed) {
                 Ok(_) => break,
@@ -43,6 +42,18 @@ impl From<AtomicFloat> for f32 {
 
 impl From<AtomicFloat> for f64 {
     fn from(a: AtomicFloat) -> Self {
+        f64::from_bits(a.bits.load(Ordering::Relaxed) as u64)
+    }
+}
+
+impl<'a> From<&'a AtomicFloat> for f32 {
+    fn from(a: &'a AtomicFloat) -> Self {
+        f32::from_bits(a.bits.load(Ordering::Relaxed))
+    }
+}
+
+impl<'a> From<&'a AtomicFloat> for f64 {
+    fn from(a: &'a AtomicFloat) -> Self {
         f64::from_bits(a.bits.load(Ordering::Relaxed) as u64)
     }
 }
