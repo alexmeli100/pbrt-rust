@@ -3,12 +3,6 @@
 use regex::Regex;
 use lazy_static::lazy_static;
 use crate::pbrtparser::tokens::*;
-use crate::core::pbrt::Float;
-
-enum ArrayVals {
-    STR(Vec<String>),
-    NUM(Vec<Float>)
-}
 
 pub type Spanned<T> = (usize, T, usize);
 
@@ -58,7 +52,7 @@ lazy_static! {
     static ref NUMBER               : Regex = Regex::new(r"^[+-]?(\d+([.]\d*)?([eE][+-]?\d+)?|[.]\d+([eE][+-]?\d+)?)"       ).unwrap();
     static ref COMMENT              : Regex = Regex::new(r#"^#[^\n]*\n"#       ).unwrap();
     static ref NEWLINE              : Regex = Regex::new(r"^\n"                ).unwrap();
-    static ref WS                   : Regex = Regex::new(r"^[[:blank:]]"       ).unwrap();
+    static ref WS                   : Regex = Regex::new(r#"^[[:space:]]"#             ).unwrap();
 }
 
 pub struct Lexer<'input> {
@@ -100,9 +94,11 @@ impl<'input> Lexer<'input> {
                 self.line += 1;
                 self.pos += mat.end();
                 self.text = &self.text[mat.end()..];
+                continue;
             } else if let Some(mat) = WS.find(self.text) {
                 self.pos += mat.end();
                 self.text = &self.text[mat.end()..];
+                //println!("{}", self.text);
                 continue
             }
 
