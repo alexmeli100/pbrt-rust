@@ -1,11 +1,7 @@
 use proc_macro::TokenStream;
 use std::ops::Range;
-use syn::Expr;
-use syn::parse::{Parse, ParseStream, Result};
-use syn::{parse_macro_input};
 use quote::quote;
-use syn::export::TokenStream2;
-
+use proc_macro2::TokenStream as TokenStream2;
 const PRIMES: [usize; 1024] = [
     2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
     101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193,
@@ -71,17 +67,6 @@ const PRIMES: [usize; 1024] = [
     8009, 8011, 8017, 8039, 8053, 8059, 8069, 8081, 8087, 8089,  8093, 8101, 8111, 8117, 8123, 8147, 8161
 ];
 
-struct Primes {
-    p: Expr
-}
-
-impl Parse for Primes {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let p: Expr = input.parse()?;
-
-        Ok(Primes{ p })
-    }
-}
 
 #[proc_macro]
 pub fn generate_scambled_radicals(_: TokenStream) -> TokenStream {
@@ -90,7 +75,7 @@ pub fn generate_scambled_radicals(_: TokenStream) -> TokenStream {
     let primes: Vec<usize> = PRIMES[0..].iter().copied().collect();
 
     let expanded = quote! {
-        fn scrambled_inverse(base_index: usize, a: u64, perm: &[u16]) -> Float {
+        pub fn scrambled_radical_inverse(base_index: usize, a: u64, perm: &[u16]) -> Float {
             match base_index {
                 #(
                     #indices => scranmbled_radical_inverse_specialized::<#primes>(perm, a),
@@ -105,7 +90,7 @@ pub fn generate_scambled_radicals(_: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn generate_radicals(input: TokenStream) -> TokenStream {
+pub fn generate_radicals(_input: TokenStream) -> TokenStream {
     let indices: Range<usize> = 1..1024;
 
     let primes: Vec<usize> = PRIMES[1..].iter().copied().collect();
@@ -114,7 +99,7 @@ pub fn generate_radicals(input: TokenStream) -> TokenStream {
         match base_index {
             0 => reverse_bits64(n) as Float * hexf32!("0x1.0p-64"),
             #(
-                #indices => radical_inverse_specialized::<#primes>(n) as Float,
+                #indices => radical_inverse_specialized::<#primes>(n),
             )*
             _ => panic!("Base {} is >= 1024, the limit of radical_inverse", base_index)
         }
@@ -123,7 +108,7 @@ pub fn generate_radicals(input: TokenStream) -> TokenStream {
     expanded.into()
 }
 
-fn impl_coefficient(ast: &syn::DeriveInput) -> TokenStream2  {
+fn impl_coefficient(ast: &syn::DeriveInput) -> TokenStream2 {
     let name = &ast.ident;
 
     quote! {
@@ -652,6 +637,16 @@ fn impl_coefficient(ast: &syn::DeriveInput) -> TokenStream2  {
                 }
 
                 ret
+           }
+
+           pub fn max_component_value(&self) -> Float {
+                let mut m = self.c[0];
+
+                for i in 1..Self::n() {
+                    m = m.max(self.c[i]);
+                }
+
+                m
            }
 
            pub fn has_nans(&self) -> bool {
