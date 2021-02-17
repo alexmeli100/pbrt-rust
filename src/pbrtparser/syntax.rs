@@ -1,6 +1,7 @@
 use crate::core::paramset::ParamSet;
 use crate::core::pbrt::Float;
 
+#[derive(Debug)]
 pub enum PBRTCommands {
     All,
     StartTime,
@@ -42,6 +43,7 @@ pub enum PBRTCommands {
 
 }
 
+#[derive(Debug)]
 pub struct TextureInfo {
     pub name    : String,
     pub ty      : String,
