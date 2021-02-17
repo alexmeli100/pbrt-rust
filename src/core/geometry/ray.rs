@@ -1,17 +1,18 @@
 use super::point::Point3f;
 use super::vector::Vector3f;
 use crate::core::pbrt::Float;
-use crate::core::medium::{Medium, Mediums};
+use crate::core::medium::{Mediums};
 use std::sync::Arc;
+use std::fmt::{Display, Result, Formatter};
 
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct Ray {
-    pub o: Point3f,
-    pub d: Vector3f,
-    pub t_max: Float,
-    pub time: Float,
-    pub medium: Option<Arc<Mediums>>,
-    pub diff: Option<RayDifferential>
+    pub o       : Point3f,
+    pub d       : Vector3f,
+    pub t_max   : Float,
+    pub time    : Float,
+    pub medium  : Option<Arc<Mediums>>,
+    pub diff    : Option<RayDifferential>
 }
 
 impl Ray {
@@ -53,7 +54,15 @@ impl Default for Ray {
     }
 }
 
-#[derive(Debug, Default)]
+impl Display for Ray {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f,
+            "[ o={}, d={}, tMax={}, time={} ]",
+            self.o, self.d, self.t_max, self.time)
+    }
+}
+
+#[derive(Debug, Default, Copy, Clone)]
 pub struct RayDifferential {
     pub rx_origin           : Point3f,
     pub ry_origin           : Point3f,
@@ -61,6 +70,7 @@ pub struct RayDifferential {
     pub ry_direction        : Vector3f,
     pub has_differentials   : bool
 }
+
 
 
 
