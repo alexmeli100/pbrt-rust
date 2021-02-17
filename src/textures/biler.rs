@@ -1,6 +1,6 @@
 use crate::core::texture::{TextureMapping2Ds, Texture, TextureMapping2D, TextureFloat, get_mapping2d, TextureSpec};
 use crate::core::interaction::SurfaceInteraction;
-use crate::core::geometry::vector::{Vector2f, Vector3f};
+use crate::core::geometry::vector::{Vector2f};
 use static_assertions::_core::ops::{Mul, Add};
 use crate::core::pbrt::Float;
 use crate::core::paramset::TextureParams;
