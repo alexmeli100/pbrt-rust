@@ -2,6 +2,7 @@
 #![feature(slice_partition_at_index)]
 #![feature(const_fn)]
 #![allow(incomplete_features)]
+#![feature(const_evaluatable_checked)]
 #![feature(const_generics)]
 
 // lints
@@ -13,6 +14,7 @@
 #![cfg_attr(
     feature = "cargo-clippy",
     allow(
+        clippy::upper_case_acronyms,
         clippy::many_single_char_names,
         clippy::too_many_arguments
     )
@@ -29,5 +31,6 @@ pub mod filters;
 pub mod pbrtparser;
 pub mod media;
 pub mod lights;
+pub mod integrators;
 
 
