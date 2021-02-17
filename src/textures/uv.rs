@@ -1,4 +1,4 @@
-use crate::core::texture::{TextureMapping2Ds, Texture, TextureMapping2D, TextureSpec, UVMapping2D, SphericalMapping2D, CylindricalMapping2D, PlannarMapping2D, get_mapping2d, TextureFloat};
+use crate::core::texture::{TextureMapping2Ds, Texture, TextureMapping2D, TextureSpec, get_mapping2d, TextureFloat};
 use crate::core::spectrum::{Spectrum, SpectrumType};
 use crate::core::interaction::SurfaceInteraction;
 use crate::core::geometry::vector::{Vector2f};
@@ -32,7 +32,7 @@ impl<T: From<Spectrum>> Texture<T> for UVTexture {
     }
 }
 
-pub fn create_uv_float(t2w: &Transform, tp: &mut TextureParams) -> Option<Arc<TextureFloat>> {
+pub fn create_uv_float(_t2w: &Transform, _tp: &mut TextureParams) -> Option<Arc<TextureFloat>> {
     None
 }
 
