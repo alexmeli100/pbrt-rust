@@ -4,9 +4,9 @@ use crate::core::pbrt::{PI_OVER4, PI_OVER2, Float, INV_PI, PI, find_interval, IN
 use crate::core::rng::{RNG, ONE_MINUS_EPSILON};
 
 pub struct Distribution1D {
-    func    : Vec<Float>,
-    cdf     : Vec<Float>,
-    func_int: Float
+    pub func        : Vec<Float>,
+    pub cdf         : Vec<Float>,
+    pub func_int    : Float
 }
 
 impl Distribution1D {
@@ -85,7 +85,7 @@ impl Distribution1D {
     }
 
     pub fn discrete_pdf(&self, index: usize) -> Float {
-        assert!(index >= 0 && index < self.count());
+        assert!(index < self.count());
 
         self.func[index] / (self.func_int * self.count() as Float)
     }
@@ -153,7 +153,7 @@ pub fn uniform_sample_disk(u: &Point2f) -> Point2f {
 
 pub fn concentric_sample_disk(u: &Point2f) -> Point2f {
     // Map uniform random number sto [-1, 1]^2
-    let uoffset = *u *2.0 - Vector2f::new(1.0, 1.0);
+    let uoffset = *u * 2.0 - Vector2f::new(1.0, 1.0);
 
     // Handle degeneracy at the origin
     if uoffset.x == 0.0 && uoffset.y == 0.0 { 
@@ -169,7 +169,7 @@ pub fn concentric_sample_disk(u: &Point2f) -> Point2f {
         theta = PI_OVER4 * (uoffset.y / uoffset.x);
     } else {
         r = uoffset.y;
-        theta = PI_OVER2 * (uoffset.x / uoffset.y)
+        theta = PI_OVER2 - PI_OVER4 * (uoffset.x / uoffset.y)
     }
     
     Point2f::new(theta.cos(), theta.sin()) * r
@@ -180,7 +180,7 @@ pub fn shuffle<T>(samp: &mut [T], count: usize, ndimensions: usize, rng: &mut RN
         let other = i + rng.uniform_int32_2((count - i) as u32) as usize;
 
         for j in 0..ndimensions {
-            samp.swap(ndimensions * i * j, ndimensions * other * j);
+            samp.swap(ndimensions * i + j, ndimensions * other + j);
         }
     }
 }
@@ -209,9 +209,9 @@ pub fn uniform_hemisphere_pdf() -> Float {
     INV2_PI
 }
 
-pub fn uniform_sanoke_shoere(u: &Point2f) -> Vector3f {
+pub fn uniform_sample_sphere(u: &Point2f) -> Vector3f {
     let z = 1.0 - 2.0 * u[0];
-    let r = (0.0 as Float).max(1.0 - z * z).sqrt();
+    let r = ((1.0 - z * z).max(0.0)).sqrt();
     let phi = 2.0 * PI * u[1];
 
     Vector3f::new(r * phi.cos(), r * phi.sin(), z)
