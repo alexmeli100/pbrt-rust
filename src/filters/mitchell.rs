@@ -54,5 +54,5 @@ pub fn create_mitchell_filter(ps: &ParamSet) -> Filters {
     let B = ps.find_one_float("B", 1.0 / 3.0);
     let C = ps.find_one_float("C", 1.0 / 3.0);
 
-    MitchellFilter::new(Vector2f::new(xw, yw), B, B).into()
+    MitchellFilter::new(Vector2f::new(xw, yw), B, C).into()
 }
