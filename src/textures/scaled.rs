@@ -4,7 +4,7 @@ use crate::core::interaction::SurfaceInteraction;
 use crate::core::transform::Transform;
 use crate::core::paramset::TextureParams;
 use crate::core::spectrum::Spectrum;
-use std::ops::{Mul, Add, AddAssign};
+use std::ops::{Mul};
 
 pub struct ScaleTexture<T1: Copy, T2: Copy>
 where T1: SpectrumT<T1>,
@@ -34,7 +34,7 @@ impl<T1: Copy, T2: Copy> Texture<T2> for ScaleTexture<T1, T2>
 }
 
 pub fn create_scale_float(
-    t2w: &Transform, tp: &mut TextureParams) -> Option<Arc<TextureFloat>> {
+    _t2w: &Transform, tp: &mut TextureParams) -> Option<Arc<TextureFloat>> {
     let s = ScaleTexture::new(
         tp.get_floattexture("tex1", 1.0),
         tp.get_floattexture("tex2", 1.0)
@@ -44,7 +44,7 @@ pub fn create_scale_float(
 }
 
 pub fn create_scale_spectrum(
-    t2w: &Transform, tp: &mut TextureParams) -> Option<Arc<TextureSpec>> {
+    _t2w: &Transform, tp: &mut TextureParams) -> Option<Arc<TextureSpec>> {
     let s = ScaleTexture::new(
         tp.get_spectrumtexture("tex1", Spectrum::new(1.0)),
         tp.get_spectrumtexture("tex2", Spectrum::new(1.0))
