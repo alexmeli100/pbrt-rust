@@ -1,4 +1,4 @@
-use crate::core::pbrt::{Float, next_float_down, next_float_up, INFINITY};
+use crate::core::pbrt::{Float, next_float_down, next_float_up, INFINITY, MACHINE_EPSILON};
 use std::ops::{Add, Sub, Mul, Div, Neg};
 
 #[derive(Debug, Default, Copy, Clone)]
@@ -102,15 +102,15 @@ impl Sub for EFloat {
         let mut r = EFloat::default();
 
         r.v = self.v - other.v;
-        r.low = next_float_down(self.lower_bound()- other.lower_bound());
-        r.high = next_float_up(self.upper_bound() - other.upper_bound());
+        r.low = next_float_down(self.lower_bound()- other.upper_bound());
+        r.high = next_float_up(self.upper_bound() - other.lower_bound());
 
         r
     }
 }
 
 impl Mul for EFloat {
-    type Output =Self;
+    type Output = Self;
 
     fn mul(self, other: Self) -> Self::Output {
         let mut r = EFloat::default();
@@ -206,4 +206,26 @@ impl PartialEq for EFloat {
     fn eq(&self, other: &Self) -> bool {
         self.v == other.v
     }
+}
+
+pub fn quadratic(a: EFloat, b: EFloat, c: EFloat, t0: &mut EFloat, t1: &mut EFloat) -> bool {
+    let discrim = b.v as f64 * b.v as f64 - 4.0 * a.v as f64 * c.v as f64;
+    if discrim < 0.0 { return false; }
+    let root_discrim = discrim.sqrt();
+
+    let float_root_discrim = EFloat::new(root_discrim as Float, (MACHINE_EPSILON as f64 * root_discrim) as Float);
+
+    // Compute quadratic t values
+    let q = if Float::from(b) < 0.0 {
+        (b - float_root_discrim) * -0.5
+    } else {
+        (b + float_root_discrim) * -0.5
+    };
+
+    *t0 = q / a;
+    *t1 = c / q;
+
+    if Float::from(*t0) > Float::from(*t1) { std::mem::swap(t0, t1); }
+
+    true
 }
