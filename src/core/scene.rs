@@ -1,8 +1,9 @@
 use bumpalo::core_alloc::sync::Arc;
-use crate::core::light::Lights;
+use crate::core::light::{Lights, LightFlags};
 use crate::core::primitive::Primitives;
 use crate::core::geometry::bounds::Bounds3f;
 use crate::core::medium::Medium;
+use crate::core::light::Light;
 use crate::core::primitive::Primitive;
 use crate::core::sampler::Samplers;
 use crate::core::geometry::ray::Ray;
@@ -18,6 +19,7 @@ pub fn init_stats() {
     nshadow_tests::init();
 }
 
+#[derive(Clone)]
 pub struct Scene {
     pub lights          : Vec<Arc<Lights>>,
     pub infinite_lights : Vec<Arc<Lights>>,
@@ -27,11 +29,33 @@ pub struct Scene {
 }
 
 impl Scene {
+    pub fn new(aggregate: Arc<Primitives>, lights: Vec<Arc<Lights>>) -> Self {
+        let wb = aggregate.world_bound();
+        let mut scene = Scene {
+            aggregate, wb, lights,
+            infinite_lights: Vec::new()
+        };
+
+
+        let mut infinite_lights = Vec::new();
+
+        for light in  scene.lights.iter() {
+            light.preprocess(&scene);
+
+            if (light.flags() & LightFlags::Infinite as u8) != 0 {
+                infinite_lights.push(light.clone())
+            }
+        }
+
+        scene.infinite_lights = infinite_lights;
+        scene
+    }
+
     pub fn intersect(&self, r: &mut Ray, isect: &mut SurfaceInteraction) -> bool {
         nintersection_tests::inc();
         assert_ne!(r.d, Vector3f::new(0.0, 0.0, 0.0));
 
-        self.aggregate.intersect(r, isect)
+        self.aggregate.intersect(r, isect, self.aggregate.clone())
     }
 
     pub fn intersect_p(&self, ray: &mut Ray) -> bool {
