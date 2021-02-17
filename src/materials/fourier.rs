@@ -2,10 +2,10 @@ use crate::core::reflection::{FourierBSDFTable, BSDF, FourierBSDF};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::collections::HashMap;
+use bumpalo_herd::Member;
 use lazy_static::lazy_static;
 use crate::core::texture::{TextureFloat};
 use crate::core::material::{Material, TransportMode, bump, Materials};
-use bumpalo::Bump;
 use crate::core::interaction::SurfaceInteraction;
 use crate::core::paramset::TextureParams;
 
@@ -36,9 +36,9 @@ impl FourierMaterial {
 }
 
 impl Material for FourierMaterial {
-    fn compute_scattering_functions<'a: 'a>(
-        &self, si: &mut SurfaceInteraction<'a>, arena: &'a Bump,
-        mode: TransportMode, _allow_multiple_lobes: bool) {
+    fn compute_scattering_functions<'b: 'b>(
+        &self, si: &mut SurfaceInteraction<'b>, arena: & Member<'b>,
+        _mat: Option<Arc<Materials>>, mode: TransportMode, _allow_multiple_lobes: bool) {
         // Perform bump mapping with bumpMap if present
         if self.bump_map.is_some() { bump(self.bump_map.as_ref().unwrap(), si); }
 
