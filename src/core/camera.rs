@@ -2,54 +2,38 @@ use enum_dispatch::enum_dispatch;
 use crate::core::geometry::point::Point2f;
 use crate::core::pbrt::Float;
 use crate::core::geometry::ray::Ray;
-use crate::core::interaction::Interactions;
+use crate::core::interaction::{InteractionData};
 use crate::core::geometry::vector::Vector3f;
 use crate::core::light::VisibilityTester;
 use crate::core::spectrum::Spectrum;
 use crate::cameras::orthographic::OrthographicCamera;
 use crate::cameras::perspective::PerspectiveCamera;
-use crate::core::transform::Transform;
+use crate::cameras::environment::EnvironmentCamera;
+use crate::cameras::realistic::RealisticCamera;
+use bumpalo::core_alloc::sync::Arc;
+use crate::core::film::Film;
+use crate::core::medium::Mediums;
+use std::fmt::{Display, Result, Formatter};
 
 #[macro_export]
-macro_rules! init_camera {
-    ($c:ident, $c_to_world:ident, $sopen:ident, $sclose:ident, $f:ident, $m:ident) => {{
-        $c.camera_to_world = $c_to_world;
-        $c.shutter_open = $sopen;
-        $c.shutter_close = $sclose;
-        $c.film = $f;
-        $c.medium = $m;
-    }}
-}
-
-#[macro_export]
-macro_rules! init_projective_camera {
-    (
-        $c:ident, $c_to_world:ident, $c_to_screen:ident, $s_window:ident,
-        $s_open:ident, $s_close:ident, $lensr:ident, $focald:ident, $f:ident, $m:ident
-    ) => {{
-        init_camera!($c, $c_to_world, $s_open, $s_close, $f, $m);
-
-        // Initialize depth of field parameters
-        $c.lens_radius = $lensr;
-        $c.focal_distance = $focald;
-
-        // Compute projective camera transformations
-
-        // Compute projective camera screen transformations
-
-        if let Some(ref f) = $c.film {
-            $c.screen_to_raster =
-                Transform::scale(f.full_resolution.x as Float, f.full_resolution.y as Float, 1.0) *
-                Transform::scale(
-                    1.0 / ($s_window.p_max.x - $s_window.p_min.x),
-                    1.0 / ($s_window.p_min.y - $s_window.p_max.y),
-                    1.0) *
-                Transform::translate(&Vector3f::new(-$s_window.p_min.x, -$s_window.p_max.y, 0.0));
+macro_rules! get_camera_data {
+    () => {
+        fn film(&self) -> Arc<Film> {
+            self.film.clone()
         }
 
-        $c.raster_to_screen = Transform::inverse(&$c.screen_to_raster);
-        $c.raster_to_camera = Transform::inverse(&$c_to_screen) * $c.raster_to_screen;
-    }}
+        fn shutter_open(&self) -> Float {
+            self.shutter_open
+        }
+
+        fn shutter_close(&self) -> Float {
+            self.shutter_close
+        }
+
+        fn medium(&self) -> Option<Arc<Mediums>> {
+            self.medium.clone()
+        }
+    }
 }
 
 #[enum_dispatch(Cameras)]
@@ -112,22 +96,50 @@ pub trait Camera {
         wt
     }
 
-    fn we(&self, ray: &Ray, p_raster2: Option<&[Point2f]>);
+    fn we(&self, _ray: &Ray, _p_raster2: Option<&mut Point2f>) -> Spectrum {
+        panic!("Camera::we() is not implemented")
+    }
 
-    fn pdf_we(&self, ray: &Ray, pdf_pos: &[Float], pdf_dir: &[Float]);
+    fn pdf_we(&self, _ray: &Ray, _pdf_pos: &mut Float, _pdf_dir: &mut Float) {
+        panic!("Camera::pdf_we() is not implemented");
+    }
 
-    fn sample_wi(&self, r: &Interactions, u: &Point2f, wi: &mut Vector3f, pdf: &mut [Float], p_raster: &mut [Point2f], vis: &mut VisibilityTester) -> Spectrum;
+    fn sample_wi(
+        &self, _r: &InteractionData, _u: &Point2f, _wi: &mut Vector3f, _pdf: &mut Float,
+        _p_raster: &mut Point2f, _vis: &mut VisibilityTester) -> Spectrum {
+        panic!("Camera::sample_wi() is not implemeted");
+    }
+
+    fn film(&self) -> Arc<Film>;
+
+    fn shutter_open(&self) -> Float;
+
+    fn shutter_close(&self) -> Float;
+
+    fn medium(&self) -> Option<Arc<Mediums>>;
+
 }
 
 #[derive(Default, Debug, Copy, Clone)]
 pub struct CameraSample {
     pub pfilm: Point2f,
     pub plens: Point2f,
-    pub time: Float
+    pub time : Float
+}
+
+impl Display for CameraSample {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f,
+            "[ pFilm: {}, pLens: {}, time {}]",
+            self.pfilm, self.plens, self.time
+        )
+    }
 }
 
 #[enum_dispatch]
 pub enum Cameras {
     OrthographicCamera,
-    PerspectiveCamera
+    PerspectiveCamera,
+    RealisticCamera,
+    EnvironmentCamera
 }
