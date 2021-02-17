@@ -35,7 +35,7 @@ pub fn create_windy_float(t2w: &Transform, _tp: &mut TextureParams) -> Option<Ar
     Some(Arc::new(WindyTexture::new(map).into()))
 }
 
-pub fn create_windy_spectrum(t2w: &Transform, tp: &mut TextureParams) -> Option<Arc<TextureSpec>> {
+pub fn create_windy_spectrum(t2w: &Transform, _tp: &mut TextureParams) -> Option<Arc<TextureSpec>> {
     let map: TextureMapping3Ds = IdentityMapping3D::new(t2w).into();
 
    Some(Arc::new(WindyTexture::new(map).into()))
