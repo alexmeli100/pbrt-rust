@@ -111,41 +111,42 @@ impl DivAssign<Float> for Quaternion {
 
 impl From<Transform> for Quaternion {
     fn from(t: Transform) -> Self {
-        let m = t.m;
-        let trace = m[(0, 0)] + m[(1, 1)] + m[(2, 2)];
+        let m= t.m;
+        let trace: Float = m[(0, 0)] + m[(1, 1)] + m[(2, 2)];
 
         if trace > 0.0 {
-            let s = (trace + 1.0).sqrt();
-            let w = s / 2.0;
-            let s = 0.5 / s;
-            let x = (m[(2, 1)] - m[(1, 2)]) * s;
-            let y = (m[(0, 2)] - m[(2, 0)]) * s;
-            let z = (m[(1, 0)] - m[(0, 1)]) * s;
 
-            Self { v: Vector3f::new(x, y, z), w }
+            let mut s: Float = (trace + 1.0).sqrt();
+            let w: Float = s / 2.0;
+            s = 0.5 / s;
+
+            Self {
+                v: Vector3f::new(
+                    (m[(2, 1)] - m[(1, 2)]) * s,
+                    (m[(0, 2)] - m[(2, 0)]) * s,
+                    (m[(1, 0)] - m[(0, 1)]) * s),
+                w,
+            }
         } else {
-            let nxt = [1, 2, 0];
-            let mut q = [0.0; 3];
-            let mut i = 0;
-
-            if m[(1, 1)] > m[(0, 0)] { i = 1; }
-            if m[(2, 2)] > m[(i, i)] { i = 2; }
-
+            // compute largest of $x$, $y$, or $z$, then remaining components
+            let nxt: [usize; 3] = [1, 2, 0];
+            let mut q: [Float; 3] = [0.0; 3];
+            let mut i = if m[(1, 1)] > m[(0, 0)] { 1 } else { 0 };
+            if m[(2, 2)] > m[(i, i)] {
+                i = 2;
+            }
             let j = nxt[i];
             let k = nxt[j];
-            let mut s = ((m[(i, i)] - (m[(j, j)] + m[(k, k)])) + 1.0).sqrt();
+            let mut s: Float = ((m[(i, i)] - (m[(j ,j)] + m[(k, k)])) + 1.0).sqrt();
             q[i] = s * 0.5;
-
-            if s != 0.0 { s = 0.5 / s; }
-
-            let w = (m[(k, j)] - m[(j, k)]) * s;
+            if s != 0.0 {
+                s = 0.5 / s;
+            }
+            let w: Float = (m[(k, j)] - m[(j, k)]) * s;
             q[j] = (m[(j, i)] + m[(i, j)]) * s;
-            q[k] = (m[(k, i)]) + m[(i, k)] * s;
-            let x = q[0];
-            let y = q[1];
-            let z = q[2];
+            q[k] = (m[(k, i)] + m[(i, k)]) * s;
 
-            Self { v: Vector3f::new(x, y, z), w }
+            Self { v: Vector3f::new(q[0], q[1], q[2]), w, }
         }
     }
 }
