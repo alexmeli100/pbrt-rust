@@ -2,35 +2,40 @@ use crate::core::pbrt::{Float, radians, clamp, PI};
 use crate::core::transform::Transform;
 use crate::core::shape::{Shape, Shapes};
 use crate::core::geometry::point::{Point2f, Point3f};
-use crate::core::interaction::{Interaction, SurfaceInteraction, Interactions};
+use crate::core::interaction::{SurfaceInteraction, InteractionData};
 use crate::core::geometry::vector::{Vector3f, Vector3};
 use crate::core::geometry::ray::Ray;
 use crate::core::geometry::bounds::Bounds3f;
 use crate::core::geometry::normal::Normal3f;
 use std::sync::Arc;
+use crate::core::sampling::concentric_sample_disk;
+use crate::core::paramset::ParamSet;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Disk {
     height                   : Float,
     radius                   : Float,
     inner_radius             : Float,
     phi_max                  : Float,
-    object_to_world          : Transform,
-    world_to_object          : Transform,
+    object_to_world          : Arc<Transform>,
+    world_to_object          : Arc<Transform>,
     reverse_orientation      : bool,
     transform_swapshandedness: bool
 }
 
 impl Disk {
     pub fn new(
-        object_to_world: Transform, world_to_object: Transform, reverse_orientation: bool,
-        height: Float, radius: Float, inner_radius: Float, phi_max: Float) -> Self {
+        object_to_world: Arc<Transform>, world_to_object: Arc<Transform>,
+        reverse_orientation: bool, height: Float, radius: Float,
+        inner_radius: Float, phi_max: Float) -> Self {
+        let sh = object_to_world.swaps_handedness();
+
         Self {
             object_to_world, world_to_object,
             reverse_orientation, height,
             radius, inner_radius,
             phi_max: radians(clamp(phi_max, 0.0, 360.0)),
-            transform_swapshandedness: false
+            transform_swapshandedness: sh
         }
     }
 }
@@ -43,7 +48,10 @@ impl Shape for Disk {
         )
     }
 
-    fn intersect(&self, r: &Ray, t_hit: &mut f32, isect: &mut SurfaceInteraction, test_aphatexture: bool) -> bool {
+    fn intersect(
+        &self, r: &Ray, t_hit: &mut f32,
+        isect: &mut SurfaceInteraction,
+        _test_aphatexture: bool, s: Option<Arc<Shapes>>) -> bool {
         // Transform ray to object space
         let mut o_err = Vector3::default();
         let mut d_err = Vector3::default();
@@ -51,11 +59,11 @@ impl Shape for Disk {
 
         // compute plane intersection for disk
         // reject disk intersection for rays parallel to the disk's plane
-        if r.d.z == 0.0 { return false; }
+        if ray.d.z == 0.0 { return false; }
 
-        let t_shape_hit = (self.height - r.o.z) / r.d.z;
+        let t_shape_hit = (self.height - ray.o.z) / r.d.z;
 
-        if t_shape_hit <= 0.0 || t_shape_hit >= r.t_max { return false; }
+        if t_shape_hit <= 0.0 || t_shape_hit >= ray.t_max { return false; }
 
         // see if hit point is inside disk radii and phi_max
         let mut p_hit = ray.find_point(t_shape_hit);
@@ -88,8 +96,7 @@ impl Shape for Disk {
         let p_error = Vector3f::new(0.0, 0.0, 0.0);
 
         // initialize surface interaction from parametric information
-        let shape = Some(Arc::new((*self).into()));
-        let mut s = SurfaceInteraction::new(&p_hit, &p_error, &Point2f::new(u, v), &-ray.d, &dpdu, &dpdv, &dndu, &dndv, ray.time, shape);
+        let mut s = SurfaceInteraction::new(&p_hit, &p_error, &Point2f::new(u, v), &-ray.d, &dpdu, &dpdv, &dndu, &dndv, ray.time, s);
         *isect = self.object_to_world.transform_surface_interaction(&mut s);
 
         *t_hit = t_shape_hit;
@@ -98,23 +105,28 @@ impl Shape for Disk {
 
     }
 
-    fn intersect_p(&self, r: &Ray, test_alpha_texture: bool) -> bool {
+    fn intersect_p(&self, r: &Ray, _test_alpha_texture: bool) -> bool {
         // Transform ray to object space
         let mut o_err = Vector3::default();
         let mut d_err = Vector3::default();
         let ray = self.world_to_object.transform_ray_error(r, &mut o_err, &mut d_err);
 
+        //println!("{:?}, {:?}", o_err, d_err);
+
         // compute plane intersection for disk
         // reject disk intersection for rays parallel to the disk's plane
-        if r.d.z == 0.0 { return false; }
+        if ray.d.z == 0.0 { return false; }
+        //println!("{:?}", ray.d);
 
-        let t_shape_hit = (self.height - r.o.z) / r.d.z;
+        let t_shape_hit = (self.height - ray.o.z) / ray.d.z;
 
-        if t_shape_hit <= 0.0 || t_shape_hit >= r.t_max { return false; }
+        if t_shape_hit <= 0.0 || t_shape_hit >= ray.t_max { return false; }
 
         // see if hit point is inside disk radii and phi_max
         let p_hit = ray.find_point(t_shape_hit);
         let dist2 = p_hit.x * p_hit.x + p_hit.y * p_hit.y;
+
+        //println!("{:?}", p_hit);
 
         if dist2 > self.radius * self.radius || dist2 < self.inner_radius * self.inner_radius {
             return false
@@ -134,16 +146,22 @@ impl Shape for Disk {
         self.phi_max * 0.5 * (self.radius * self.radius - self.inner_radius * self.inner_radius)
     }
 
-    fn sample(&self, u: &Point2f, pdf: &mut Float) -> Interactions {
-        unimplemented!()
-    }
+    fn sample(&self, u: &Point2f, pdf: &mut Float) -> InteractionData {
+        let pd = concentric_sample_disk(u);
+        let pobj = Point3f::new(pd.x * self.radius, pd.y * self.radius, self.height);
+        //println!("{:?}", pd);
+        let mut it = InteractionData::default();
+        it.n = (self.object_to_world.transform_normal(&Normal3f::new(0.0, 0.0, 0.1))).normalize();
+        if self.reverse_orientation { it.n *= -1.0; }
+        it.p = self.object_to_world.transform_point_abs_error(
+            &pobj,
+            &Vector3f::new(0.0, 0.0, 0.0),
+            &mut it.p_error);
 
-    fn sample_interaction(&self, i: &Interactions, u: &Point2f, pdf: &mut Float) -> Interactions {
-        unimplemented!()
-    }
 
-    fn pdf(&self, i: &Interactions, wi: &Vector3f) -> f32 {
-        unimplemented!()
+
+        *pdf = 1.0 / self.area();
+        it
     }
 
     fn reverse_orientation(&self) -> bool {
@@ -154,11 +172,26 @@ impl Shape for Disk {
         self.transform_swapshandedness
     }
 
-    fn object_to_world(&self) -> Transform {
-        self.object_to_world
+    fn object_to_world(&self) -> Arc<Transform> {
+        self.object_to_world.clone()
     }
 
-    fn world_to_object(&self) -> Transform {
-        self.world_to_object
+    fn world_to_object(&self) -> Arc<Transform> {
+        self.world_to_object.clone()
     }
+}
+
+pub fn create_disk_shape(
+    o2w: Arc<Transform>, w2o: Arc<Transform>,
+    reverse_orientation: bool, params: &ParamSet) -> Arc<Shapes> {
+    let height = params.find_one_float("height", 0.0);
+    let radius = params.find_one_float("radius", 1.0);
+    let iradius = params.find_one_float("innerradius", 0.0);
+    let phimax = params.find_one_float("phimax", 360.0);
+
+    let d = Disk::new(
+        o2w, w2o, reverse_orientation,
+        height, radius, iradius, phimax);
+
+    Arc::new(d.into())
 }
