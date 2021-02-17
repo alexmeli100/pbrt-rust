@@ -4,7 +4,7 @@ use crate::textures::dots::DotsTexture;
 use crate::textures::constant::ConstantTexture;
 use crate::textures::scaled::ScaleTexture;
 use crate::core::interaction::SurfaceInteraction;
-use crate::textures::imagemap::{ImageTexture, ImageTextureFloat, ImageTextureRGB};
+use crate::textures::imagemap::{ ImageTextureFloat, ImageTextureRGB};
 use crate::textures::mix::MixTexture;
 use crate::textures::biler::BilerTexture;
 use crate::textures::uv::UVTexture;
@@ -423,7 +423,7 @@ pub fn turbulence(
         0.2,
         noisep(*p * lambda).abs());
 
-    for i in nint..max_octaves {
+    for _i in nint..max_octaves {
         sum += o * 0.2;
         o *= omega;
     }
@@ -457,7 +457,7 @@ pub fn get_mapping2d(t2w: &Transform, tp: &mut TextureParams) -> TextureMapping2
             PlannarMapping2D::new(&vs, &vt, ds, dt).into()
 
         }
-        "spherical" => SphericalMapping2D::new(&Transform::inverse(t2w)).into(),
+        "spherical"   => SphericalMapping2D::new(&Transform::inverse(t2w)).into(),
         "cylindrical" => CylindricalMapping2D::new(&Transform::inverse(t2w)).into(),
         _ => {
             error!("2D texture mapping \"{}\" unknown", ty);
