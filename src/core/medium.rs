@@ -1,14 +1,16 @@
-use std::fmt::{Debug, Display, Result, Formatter};
+use std::fmt::{Display, Result, Formatter};
 use std::sync::Arc;
 use enum_dispatch::enum_dispatch;
-use crate::core::geometry::vector::Vector3f;
-use crate::core::pbrt::{Float, INV4_PI};
+use crate::core::geometry::vector::{Vector3f, vec3_coordinate_system};
+use crate::core::pbrt::{Float, INV4_PI, PI};
 use crate::core::geometry::point::Point2f;
 use crate::core::geometry::ray::Ray;
-use crate::core::spectrum::Spectrum;
-use crate::core::sampler::Samplers;
+use crate::core::spectrum::{Spectrum, SpectrumType};
+use crate::core::sampler::{Sampler};
 use crate::core::interaction::MediumInteraction;
 use crate::media::homogeneous::HomogeneousMedium;
+use crate::media::grid::GridDensityMedium;
+use crate::core::geometry::geometry::spherical_direction_basis;
 
 struct MeasureSS {
     name            : &'static str,
@@ -76,21 +78,33 @@ const SUBSURFACE_PARAMETER_TABLE: [MeasureSS; 47] = [
     measure_ss!("Pacific Ocean Surface Water",  [0.0001764, 0.00032095, 0.00019617],    [0.031845, 0.031324, 0.030147])
 ];
 
+pub fn get_medium_scattering_properties(name: &str, sigma_a: &mut Spectrum, sigma_s: &mut Spectrum) -> bool {
+    for mss in SUBSURFACE_PARAMETER_TABLE.iter() {
+        if name == mss.name {
+            *sigma_a = Spectrum::from_rgb(mss.sigma_a, SpectrumType::Reflectance);
+            *sigma_s = Spectrum::from_rgb(mss.sigma_prime_s, SpectrumType::Reflectance);
+            return true;
+        }
+    }
+    
+    false
+}
+
 #[enum_dispatch(Mediums)]
 pub trait Medium {
-    fn tr(&self, ray: &Ray, sampler: &mut Samplers) -> Spectrum;
-    fn sample(
-        &self, ray: &Ray, sampler: &mut Samplers,
+    fn tr<S: Sampler>(&self, ray: &Ray, sampler: &mut S) -> Spectrum;
+    fn sample<S: Sampler>(
+        &self, ray: &Ray, sampler: &mut S,
         mi: &mut MediumInteraction ) -> Spectrum;
 }
 
 #[enum_dispatch]
-#[derive(Debug)]
 pub enum Mediums {
-    HomogeneousMedium
+    GridDensityMedium,
+    HomogeneousMedium,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
 pub struct MediumInterface {
     pub inside  : Option<Arc<Mediums>>,
     pub outside : Option<Arc<Mediums>>
@@ -127,6 +141,7 @@ pub trait PhaseFunction {
 }
 
 #[enum_dispatch(PhaseFunction)]
+#[derive(Clone)]
 pub enum PhaseFunctions {
     HenyeyGreenstein
 }
@@ -138,8 +153,15 @@ pub fn phase_hg(cos_theta: Float, g: Float) -> Float {
     INV4_PI * (1.0 - g * g) / (denom * denom.sqrt())
 }
 
+#[derive(Clone)]
 pub struct HenyeyGreenstein {
     g: Float
+}
+
+impl HenyeyGreenstein {
+    pub fn new(g: Float) -> Self {
+        Self { g }
+    }
 }
 
 impl PhaseFunction for HenyeyGreenstein {
@@ -149,7 +171,25 @@ impl PhaseFunction for HenyeyGreenstein {
     }
 
     fn sample_p(&self, wo: &Vector3f, wi: &mut Vector3f, u: &Point2f) -> f32 {
-        unimplemented!()
+        // TODO: ProfilePhase
+        // Compute cos theta for henvey--Greenstein sample
+        let cos_theta = if self.g.abs() < 1.0e-3 {
+            1.0 - 2.0 * u[0]
+        } else {
+            let sqr_term = (1.0 - self.g * self.g) / (1.0 + self.g - 2.0 * self.g * u[0]);
+
+            -(1.0 + self.g * self.g - sqr_term * sqr_term) / (2.0 * self.g)
+        };
+
+        // Compute direction wi for Henvey-Greenstein sample
+        let sin_theta = ((1.0 - cos_theta * cos_theta).max(0.0)).sqrt();
+        let phi = 2.0 * PI * u[1];
+        let mut v1 = Vector3f::default();
+        let mut v2 = Vector3f::default();
+        vec3_coordinate_system(&wo, &mut v1, &mut v2);
+        *wi = spherical_direction_basis(sin_theta, cos_theta, phi, &v1, &v2, wo);
+
+        phase_hg(cos_theta, self.g)
     }
 }
 
