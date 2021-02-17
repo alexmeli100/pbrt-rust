@@ -1,35 +1,32 @@
 use crate::core::transform::{Transform, AnimatedTransform};
 use std::ops::{IndexMut, Index, Deref};
 use std::sync::Arc;
-use std::sync::Mutex;
-use lazy_static::lazy_static;
 use static_assertions::{const_assert_eq};
 use crate::core::material::Materials;
 use crate::core::paramset::{ParamSet, TextureParams};
 use std::collections::HashMap;
-use crate::core::texture::{Textures, TextureFloat, TextureSpec};
+use crate::core::texture::{TextureFloat, TextureSpec};
 use crate::core::pbrt::{Float, Options};
-use crate::core::spectrum::Spectrum;
+use crate::core::spectrum::{Spectrum, SpectrumType};
 use log::{info, error, warn};
-use crate::core::medium::{Mediums, MediumInterface};
-use crate::core::light::{Lights, AreaLights};
+use crate::core::medium::{Mediums, MediumInterface, get_medium_scattering_properties};
+use crate::core::light::{Lights};
 use crate::core::primitive::{Primitives, GeometricPrimitive, TransformedPrimitive};
-use typed_arena::Arena;
 use crate::{stat_counter, stat_memory_counter, stat_percent, stat_int_distribution};
 use crate::core::stats::*;
 use nalgebra::Matrix4;
 use crate::core::geometry::vector::Vector3f;
 use crate::core::geometry::point::Point3f;
 use crate::core::shape::Shapes;
-use crate::core::film::Film;
-use crate::core::camera::Cameras;
+use crate::core::film::{Film, create_film};
+use crate::core::camera::{Cameras, Camera};
 use crate::core::sampler::Samplers;
 use crate::accelerators::bvh::{create_bvh_accelerator, SplitMethod};
 use crate::accelerators::kdtreeaccel::create_kdtree_accelerator;
 use crate::core::filter::Filters;
 use bumpalo::Bump;
 use crate::accelerators::bvh::BVHAccel;
-use crate::core::integrator::Integrators;
+use crate::core::integrator::{Integrators, Integrator};
 use crate::core::scene::Scene;
 use crate::materials::matte::create_matte_material;
 use crate::materials::plastic::create_plastic_material;
@@ -39,7 +36,7 @@ use crate::textures::constant::{create_constant_float, create_constant_spectrum}
 use crate::textures::scaled::{ create_scale_float, create_scale_spectrum};
 use crate::textures::mix::{create_mix_float, create_mix_spectrum};
 use crate::textures::biler::{create_biler_float, create_biler_spectrum};
-use crate::textures::imagemap::{create_image_float, create_image_spectrum};
+use crate::textures::imagemap::{create_image_float, create_image_spectrum, clear_cache};
 use crate::textures::uv::{create_uv_float, create_uv_spectrum};
 use crate::textures::checkerboard::{create_checkerboard_float, create_checkerboard_spectrum};
 use crate::textures::dots::{create_dots_float, create_dots_spectrum};
@@ -52,6 +49,47 @@ use crate::filters::gaussian::create_gaussian_filter;
 use crate::filters::mitchell::create_mitchell_filter;
 use crate::filters::sinc::create_sinc_filter;
 use crate::filters::triangle::create_triangle_filter;
+use crate::shapes::sphere::create_sphere;
+use crate::shapes::cylinder::create_cylinder_shape;
+use crate::shapes::disk::create_disk_shape;
+use crate::shapes::cone::create_cone_shape;
+use crate::shapes::paraboloid::create_paraboloid_shape;
+use crate::shapes::hyperboloid::create_hyperboloid_shape;
+use crate::shapes::curve::create_curve_shape;
+use crate::shapes::triangle::{create_trianglemesh_shape};
+use crate::shapes::plymesh::create_plymesh;
+use crate::shapes::heightfield::create_heightfield;
+use crate::shapes::loopsubdiv::create_loop_dubdiv;
+use crate::shapes::nurbs::create_nurbs;
+use crate::media::homogeneous::HomogeneousMedium;
+use crate::media::grid::GridDensityMedium;
+use crate::pbrtparser::pbrtparser;
+use crate::lights::point::create_pointlight;
+use crate::lights::spot::create_spotlight;
+use crate::lights::goniometric::create_goniometriclight;
+use crate::lights::projection::create_projectionlight;
+use crate::lights::distant::create_distantlight;
+use crate::lights::infinite::create_infinitelight;
+use crate::lights::diffuse::create_diffuse_arealight;
+use crate::cameras::perspective::create_perspective_camera;
+use crate::cameras::orthographic::create_orthographic_camera;
+use crate::cameras::realistic::create_realistic_camera;
+use crate::cameras::environment::create_environment_camera;
+use crate::integrators::whitted::create_whitted_integrator;
+use crate::integrators::directlighting::create_directlighting_integrator;
+use crate::integrators::path::create_path_integrator;
+use crate::integrators::volpath::create_volpath_integrator;
+use crate::integrators::bdpt::create_bdpt_intergrator;
+use crate::integrators::mlt::create_mlt_integrator;
+use crate::integrators::ao::create_ao_integrator;
+use crate::integrators::sppm::create_sppm_integrator;
+use crate::materials::disney::create_disney_material;
+use crate::samplers::zerotwosequence::create_zerotwo_sequence_sampler;
+use crate::samplers::maxmin::create_maxmin_dist_sampler;
+use crate::samplers::halton::create_halton_sampler;
+use crate::samplers::sobol::create_sobol_sampler;
+use crate::samplers::random::create_random_sampler;
+use crate::samplers::stratified::create_stratified_sampler;
 
 const MAX_TRANSFORMS: usize = 2;
 const START_TRANSFORM_BITS: usize = 1 << 0;
@@ -170,36 +208,114 @@ struct RenderOptions {
 impl Default for RenderOptions {
     fn default() -> Self {
         Self {
-            transform_start_time: 0.0,
-            transform_end_time: 1.0,
-            filter_name: "box".to_owned(),
-            film_name: "image".to_owned(),
-            sampler_name: "halton".to_owned(),
-            accelerator_name: "bvh".to_owned(),
-            integrator_name: "path".to_owned(),
-            camera_name: "perspective".to_owned(),
-            ..Default::default()
+            transform_start_time    : 0.0,
+            transform_end_time      : 1.0,
+            filter_name             : "box".to_owned(),
+            filter_params           : Default::default(),
+            film_name               : "image".to_owned(),
+            film_params             : Default::default(),
+            sampler_name            : "halton".to_owned(),
+            sampler_params          : Default::default(),
+            accelerator_name        : "bvh".to_owned(),
+            accelerator_params      : Default::default(),
+            integrator_name         : "path".to_owned(),
+            integrator_params       : Default::default(),
+            camera_name             : "perspective".to_owned(),
+            camera_params           : Default::default(),
+            camera_to_world         : Default::default(),
+            named_media             : Default::default(),
+            lights                  : vec![],
+            primitives              : vec![],
+            instances               : Default::default(),
+            current_instance        : None,
+            have_scattering_media   : false
         }
     }
 }
 
 impl RenderOptions {
-    fn make_scene(&mut self) -> Option<Scene> {
-        unimplemented!()
+    pub fn make_scene(&mut self) -> Scene {
+        let prims = self.primitives.split_off(0);
+        let lights = self.lights.split_off(0);
+        let params = &self.accelerator_params;
+        let accelerator = make_accelerator(&self.accelerator_name, prims, params);
+
+         Scene::new(accelerator, lights)
     }
 
-    fn make_integrator(&self) -> Option<Integrators> {
-        unimplemented!()
+    pub fn make_integrator(
+        &self, opts: &Options, cache: &mut TransformCache,
+        mi: MediumInterface) -> Option<Integrators> {
+        let cam = self.make_camera(opts, cache, mi);
+
+        if cam.is_none() {
+            error!("Unable to create camera");
+            return None;
+        }
+
+        let camera = cam.unwrap();
+        let film = camera.film();
+
+        let samp = make_sampler(&self.sampler_name, &self.sampler_params, film, opts);
+
+        if samp.is_none() {
+            error!("Unable to create sampler.");
+            return None;
+        }
+
+        let sampler = samp.unwrap();
+        let params = &self.integrator_params;
+
+        let integrator = match self.integrator_name.as_str() {
+            "whitted"          => create_whitted_integrator(params, sampler, camera),
+            "directlighting"   => create_directlighting_integrator(params, sampler, camera),
+            "path"             => create_path_integrator(params, sampler, camera),
+            "volpath"          => create_volpath_integrator(params, sampler, camera),
+            "bdpt"             => create_bdpt_intergrator(params, sampler, camera),
+            "mlt"              => create_mlt_integrator(params, camera, opts),
+            "ambientocclusion" => create_ao_integrator(params, sampler, camera, opts),
+            "sppm"             => create_sppm_integrator(params, camera, opts),
+            s                  => {
+                error!("Integrator \"{}\" unknown.", s);
+                None
+            }
+        };
+
+        if self.have_scattering_media && self.integrator_name != "volpath" &&
+           self.integrator_name != "bdpt" && self.integrator_name != "mlt" {
+            warn!(
+                "Scene has scattering media but \"{}\" integrator doesn't support \
+                volume scattering. Consider using \"volpath\", \"bdpt\", or \
+                \"mlt\".", self.integrator_name);
+        }
+
+        integrator
     }
 
-    fn make_camera(&self) -> Option<Cameras> {
-        unimplemented!()
+    pub fn make_camera(
+        &self, opts: &Options, cache: &mut TransformCache,
+        mi: MediumInterface) -> Option<Arc<Cameras>> {
+        let filter = make_filter(&self.filter_name, &self.filter_params);
+
+        if let Some(film) = make_film(&self.film_name, &self.film_params, filter, opts) {
+            make_camera(
+                &self.camera_name, &self.camera_params,
+                &self.camera_to_world,
+                self.transform_start_time,
+                self.transform_end_time,
+                film, mi, cache
+            )
+        } else {
+            error!("Unable to create film.");
+
+            None
+        }
     }
 }
 
-type FloatTextureMap = HashMap<String, Arc<TextureFloat>>;
+type FloatTextureMap    = HashMap<String, Arc<TextureFloat>>;
 type SpectrumTextureMap = HashMap<String, Arc<TextureSpec>>;
-type NamedMaterialMap = HashMap<String, Arc<MaterialInstance>>;
+type NamedMaterialMap   = HashMap<String, Arc<MaterialInstance>>;
 
 #[derive(Default, Clone)]
 struct GraphicsState {
@@ -220,8 +336,21 @@ struct GraphicsState {
 
 impl GraphicsState {
     pub fn new() -> Self {
-        // TODO: GraphicState::new()
-        unimplemented!()
+        let float_textures = Arc::new(FloatTextureMap::new());
+        let spectrum_textures = Arc::new(SpectrumTextureMap::new());
+        let named_materials = Arc::new(NamedMaterialMap::new());
+        let empty = ParamSet::default();
+        let mut tp = TextureParams::new(&empty, &empty, &float_textures, &spectrum_textures);
+        let mtl = Some(Arc::new(create_matte_material(&mut tp)));
+        let material = MaterialInstance::new("matte", mtl, Default::default());
+        let current_material = Some(Arc::new(material));
+
+        Self {
+            float_textures, spectrum_textures,
+            named_materials, current_material,
+            ..Default::default()
+        }
+
     }
 
     pub fn get_materialfor_shape(&self, params: &ParamSet) -> Option<Arc<Materials>> {
@@ -267,14 +396,10 @@ impl GraphicsState {
     }
 }
 
-lazy_static! {
-    static ref CACHE_ARENA: Mutex<Arena<Transform>> = Mutex::new(Arena::new());
-}
-
 struct TransformCache {
-    table: Vec<Option<Arc<Transform>>>,
-    table_occupancy: usize,
-    arena: Bump
+    table           : Vec<Option<Arc<Transform>>>,
+    table_occupancy : usize,
+    arena           : Bump
 }
 
 impl Default for TransformCache {
@@ -293,15 +418,15 @@ impl TransformCache {
     }
 
     fn hash(t: &Transform) -> u64 {
-        let mut size = std::mem::size_of::<Matrix4<Float>>();
+        let mut size = std::mem::size_of::<Float>() as isize * 16;
         let mut hash = 14695981039346656037_u64;
 
         unsafe {
-            let mut ptr = &t.m as *const Matrix4<Float> as *const char;
+            let mut ptr = t.m.as_ptr() as  *const u8;
 
             while size > 0 {
                 hash ^= *ptr as u64;
-                hash *= 1099511628211_u64;
+                hash = hash.wrapping_mul(1099511628211_u64);
                 ptr = ptr.add(1);
                 size -= 1;
             }
@@ -317,8 +442,8 @@ impl TransformCache {
 
         loop {
             // Keep looking until we find the Transform or determine that it's not present
-            let val = self.table[offset as usize].as_ref().unwrap().deref();
-            if self.table[offset as usize].is_none() || val == t {
+            let val = self.table[offset as usize].as_ref();
+            if val.is_none() || val.unwrap().deref() == t {
                 break;
             }
 
@@ -352,8 +477,8 @@ impl TransformCache {
     }
 
     fn insert(table: &mut Vec<Option<Arc<Transform>>>, occupancy: &mut usize, tnew: &Arc<Transform>) {
+        *occupancy += 1;
         if *occupancy == table.len() / 2 {
-            *occupancy += 1;
             TransformCache::grow(table);
         }
 
@@ -411,9 +536,53 @@ enum APIState {
     WorldBlock
 }
 
-fn make_shapes(name: &str, obj_2_world: &Transform, world_2_obj: &Transform,
-               rorientation: bool, params: &ParamSet) -> Vec<Arc<Shapes>> {
-    unimplemented!()
+impl Default for APIState {
+    fn default() -> Self {
+        Self::Uninitialized
+    }
+}
+
+fn make_shapes(
+    name: &str, o2w: Arc<Transform>, w2o: Arc<Transform>,
+    rorientation: bool, params: &ParamSet,
+    texs: &FloatTextureMap) -> Vec<Arc<Shapes>> {
+    let mut shapes = Vec::new();
+    let so2w = o2w.clone();
+    let sw2o = w2o.clone();
+
+    // Create single Shape types
+    let s = match name {
+        "sphere"      => Some(create_sphere(o2w, w2o, rorientation, params)),
+        "cylinder"    => Some(create_cylinder_shape(o2w, w2o, rorientation, params)),
+        "disk"        => Some(create_disk_shape(o2w, w2o, rorientation, params)),
+        "cone"        => Some(create_cone_shape(o2w, w2o, rorientation, params)),
+        "paraboloid"  => Some(create_paraboloid_shape(o2w, w2o, rorientation, params)),
+        "hyperboloid" => Some(create_hyperboloid_shape(o2w, w2o, rorientation, params)),
+        _             => None
+    };
+
+    if let Some(shape) = s {
+        return vec![shape];
+    }
+
+
+    let mut ss = match name {
+        "curve"         => create_curve_shape(so2w, sw2o, rorientation, params),
+        "trianglemesh"  => create_trianglemesh_shape(so2w, sw2o, rorientation, params, texs),
+        "plymesh"       => create_plymesh(so2w, sw2o, rorientation, params, texs),
+        "heightfield"   => create_heightfield(so2w, sw2o, rorientation, params),
+        "loopsubdiv"    => create_loop_dubdiv(so2w, sw2o, rorientation, params),
+        "nurbs"         => create_nurbs(so2w, sw2o, rorientation, params),
+        _               => {
+            warn!("Shape \"{}\" unknown.", name);
+            vec![]
+        }
+
+    };
+
+    shapes.append(&mut ss);
+
+    shapes
 }
 
 fn make_material(name: &str, mp: &mut TextureParams, state: &GraphicsState, opts: &Options) -> Option<Arc<Materials>> {
@@ -426,6 +595,7 @@ fn make_material(name: &str, mp: &mut TextureParams, state: &GraphicsState, opts
         "matte"     => Some(Arc::new(create_matte_material(mp))),
         "plastic"   => Some(Arc::new(create_plastic_material(mp))),
         "fourier"   => Some(Arc::new(create_fourier_material(mp))),
+        "disney"    => Some(Arc::new(create_disney_material(mp))),
         "mix"       => {
             let m1 = mp.find_string("namedmaterial1", "");
             let m2 = mp.find_string("namedmaterial2", "");
@@ -463,8 +633,8 @@ fn make_material(name: &str, mp: &mut TextureParams, state: &GraphicsState, opts
     }
 
     mp.report_unused();
+    nmaterials_created::inc();
 
-    // TODO ++nMaterialsCreated
     material
 }
 
@@ -518,17 +688,105 @@ fn make_spectrum_texture(name: &str, t2w: &Transform, tp: &mut TextureParams) ->
     tex
 }
 
-fn make_medium(name: &str, params: &ParamSet, medium_2_world: &Transform) -> Option<Arc<Mediums>> {
-    unimplemented!()
+fn make_medium(name: &str, params: &ParamSet, m2w: &Transform) -> Option<Arc<Mediums>> {
+    let mut siga = Spectrum::from_rgb([0.0011, 0.0024, 0.014], SpectrumType::Reflectance);
+    let mut sigs = Spectrum::from_rgb([2.55, 3.21, 3.77], SpectrumType::Reflectance);
+    let preset = params.find_one_string("preset", "".to_owned());
+    let found = get_medium_scattering_properties(&preset, &mut siga, &mut sigs);
+
+    if !preset.is_empty() && !found {
+        warn!("Material preset \"{}\" not found. Using defaults.", preset);
+    }
+
+    let scale = params.find_one_float("scale", 1.0);
+    let g = params.find_one_float("g", 0.0);
+    siga = params.find_one_spectrum("sigma_a", siga) * scale;
+    sigs = params.find_one_spectrum("sigma_s", sigs) * scale;
+
+    let m = match name {
+        "homogenous"    => Some(Arc::new(HomogeneousMedium::new(&siga, &sigs, g).into())),
+        "heterogeneous" => {
+            let mut nitems = 0;
+            let data = params.find_float("density", &mut nitems).unwrap_or_default();
+            if data.is_empty() {
+                error!("No \"density\" values provided for heterogeneous medium?");
+                return None;
+            }
+
+            let nx = params.find_one_int("nx", 1) as usize;
+            let ny = params.find_one_int("ny", 1) as usize;
+            let nz = params.find_one_int("nz", 1) as usize;
+            let p0 = params.find_one_point3f("p0", Default::default());
+            let p1 = params.find_one_point3f("p1", Point3f::new(1.0, 1.0, 1.0));
+
+            if data.len() != nx * ny * nz {
+                error!(
+                    "GridDensityMedium has {} density values; \
+                    expected nx*ny*nz = {}", nitems, nx * ny * nz);
+                return None;
+            }
+
+            let scale = Transform::scale(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+            let d2m = Transform::translate(&Vector3f::from(p0)) * scale;
+            let med2w = *m2w * d2m;
+            let d = Arc::new(data);
+
+            let med: Mediums = GridDensityMedium::new(&siga, &sigs, g, nx, ny, nz, &med2w, d).into();
+
+            Some(Arc::new(med))
+        }
+        _            => {
+            warn!("Medium \"{}\" unknown.", name);
+            None
+        }
+    };
+
+    params.report_unused();
+
+    m
 }
 
-fn make_light(name: &str, params: &ParamSet, light_2_world: &Transform, minterface: &MediumInterface) -> Option<Arc<Lights>> {
-    unimplemented!()
+fn make_light(
+    name: &str, params: &ParamSet,
+    l2w: &Transform, mi: MediumInterface,
+    opts: &Options) -> Option<Arc<Lights>> {
+    let mii = MediumInterface::new(mi.outside);
+
+    let l = match name {
+        "point"                   => create_pointlight(l2w, mii, params),
+        "spot"                    => create_spotlight(l2w, mii, params),
+        "goniometric"             => create_goniometriclight(l2w, mii, params),
+        "projection"              => create_projectionlight(l2w, mii, params),
+        "distant"                 => create_distantlight(l2w, params),
+        "infinite" | "exinfinite" => create_infinitelight(l2w, params, opts),
+        _ => {
+            warn!("Light \"{}\" unknown.", name);
+
+            None
+        }
+    };
+
+    params.report_unused();
+
+    l
 }
 
-fn make_area_light(name: &str, light_2_world: &Transform, minterface: &MediumInterface,
-                   params: &ParamSet, shape: &Arc<Shapes>) -> Option<Arc<AreaLights>> {
-    unimplemented!()
+fn make_area_light(
+    name: &str, l2w: &Transform, minterface: &MediumInterface,
+    params: &ParamSet, shape: &Arc<Shapes>, opts: &Options) -> Option<Arc<Lights>> {
+    let mi = MediumInterface::new(minterface.outside.clone());
+    let l = match name {
+        "area" | "diffuse" => create_diffuse_arealight(l2w, mi, params, shape.clone(), opts),
+        _                  => {
+            warn!("Area light \"{}\" unknown.", name);
+
+            None
+        }
+    };
+
+    params.report_unused();
+
+    l
 }
 
 fn make_accelerator(name: &str, prims: Vec<Arc<Primitives>>, params: &ParamSet) -> Arc<Primitives> {
@@ -545,13 +803,51 @@ fn make_accelerator(name: &str, prims: Vec<Arc<Primitives>>, params: &ParamSet) 
     acc
 }
 
-fn make_camera(name: &str, params: &ParamSet, cam_2_worldset: &TransformSet,
-               transform_start: Float, transform_end: Float, film: Option<Arc<Film>>) -> Option<Cameras> {
-    unimplemented!()
+fn make_camera(
+    name: &str, params: &ParamSet,
+    cam2worldset: &TransformSet, tstart: Float,
+    tend: Float, film: Arc<Film>, mi: MediumInterface,
+    cache: &mut TransformCache) -> Option<Arc<Cameras>> {
+    const_assert_eq!(MAX_TRANSFORMS, 2);
+    let c2w1 = cache.lookup(&cam2worldset[0]);
+    let c2w2 = cache.lookup(&cam2worldset[1]);
+    let animated2world = AnimatedTransform::new(c2w1,  c2w2, tstart, tend);
+    let medium = mi.outside;
+
+    let cam = match name {
+        "perspective"  => create_perspective_camera(params, animated2world, film, medium),
+        "orthographic" => create_orthographic_camera(params, animated2world, film, medium),
+        "realistic"    => create_realistic_camera(params, animated2world, film, medium),
+        "environment"  => create_environment_camera(params, animated2world, film, medium),
+        _              => {
+            warn!("Camera \"{}\" unknown", name);
+
+            None
+        }
+    };
+
+    params.report_unused();
+
+    cam
 }
 
-fn make_sampler(name: &str, params: &ParamSet, film: Option<Arc<Film>>) -> Arc<Samplers>  {
-    unimplemented!()
+fn make_sampler(name: &str, params: &ParamSet, film: Arc<Film>, opts: &Options) -> Option<Box<Samplers>>  {
+    let sampler = match name {
+        "lowdiscrepancy" | "02sequence" => create_zerotwo_sequence_sampler(params, opts),
+        "maxmindist"                    => create_maxmin_dist_sampler(params, opts),
+        "halton"                        => create_halton_sampler(params, &film.get_sample_bounds(), opts.quick_render),
+        "sobol"                         => create_sobol_sampler(params, &film.get_sample_bounds(), opts),
+        "random"                        => create_random_sampler(params),
+        "stratified"                    => create_stratified_sampler(params,opts.quick_render),
+        _                               => {
+            warn!("Sampler \"{}\" unknown.", name);
+
+            None
+        }
+    };
+    params.report_unused();
+
+    sampler
 }
 
 fn make_filter(name: &str, params: &ParamSet) -> Filters {
@@ -561,7 +857,7 @@ fn make_filter(name: &str, params: &ParamSet) -> Filters {
         "mitchell"  => create_mitchell_filter(params),
         "sinc"      => create_sinc_filter(params),
         "triangle"  => create_triangle_filter(params),
-        _           => panic!(format!("Filter \"{}\" unknown", name))
+        _           => panic!("{}", format!("Filter \"{}\" unknown", name))
     };
 
     params.report_unused();
@@ -569,23 +865,35 @@ fn make_filter(name: &str, params: &ParamSet) -> Filters {
     f
 }
 
-fn make_film(name: &str, params: &ParamSet, filter: Filters) -> Option<Arc<Film>> {
-    unimplemented!()
+fn make_film(name: &str, params: &ParamSet, filter: Filters, opts: &Options) -> Option<Arc<Film>> {
+    let film = match name {
+        "image" => Some(Arc::new(create_film(params, filter, opts))),
+        _       => {
+            warn!("Film \"{}\" unknown.", name);
+
+            None
+        }
+    };
+
+    params.report_unused();
+
+    film
 }
 
+#[derive(Default)]
 pub struct API {
-    current_state: APIState,
-    curr_transform: TransformSet,
-    active_transform_bits: u32,
-    named_coordinate_system: HashMap<String, TransformSet>,
-    render_options: RenderOptions,
-    graphics_state: GraphicsState,
-    pushed_graphics_states: Vec<GraphicsState>,
-    pushed_transforms: Vec<TransformSet>,
-    pushed_active_transformbits: Vec<u32>,
-    indent_count: usize,
-    opts: Options,
-    transform_cache: TransformCache
+    current_state               : APIState,
+    curr_transform              : TransformSet,
+    active_transform_bits       : u32,
+    named_coordinate_system     : HashMap<String, TransformSet>,
+    render_options              : RenderOptions,
+    graphics_state              : GraphicsState,
+    pushed_graphics_states      : Vec<GraphicsState>,
+    pushed_transforms           : Vec<TransformSet>,
+    pushed_active_transformbits : Vec<u32>,
+    indent_count                : usize,
+    opts                        : Options,
+    transform_cache             : TransformCache
 }
 
 macro_rules! verify_initialized {
@@ -642,7 +950,28 @@ impl API {
         // TODO: API::init
         self.opts = opts;
 
+        // API Initialization
+        if self.current_state != APIState::Uninitialized {
+            error!("pbrtInit() has already been called")
+        }
+
+        self.current_state = APIState::OptionsBlock;
+        self.render_options = RenderOptions::default();
+        self.graphics_state = GraphicsState::new();
+        self.indent_count = 0;
+
+        // General pbrt Initialization
         Spectrum::init();
+    }
+
+    pub fn cleanup(&mut self) {
+        if self.current_state == APIState::Uninitialized {
+            error!("pbrtCleanup() called without pbrtInit().");
+        } else if self.current_state == APIState::WorldBlock {
+            error!("pbrtCleanup() called while inside world block.")
+        }
+
+        self.current_state = APIState::Uninitialized;
     }
 
     pub fn identity(&mut self) {
@@ -667,7 +996,7 @@ impl API {
 
     pub fn transform(&mut self, tr: Vec<Float>) {
         assert_eq!(tr.len(), 16);
-        let t = Transform::from_matrix(&Matrix4::from_row_slice(&tr));
+        let t = Transform::from_matrix(&Matrix4::from_column_slice(&tr));
         verify_initialized!(self, "Transform");
         for_active_transform!(self, t);
 
@@ -680,9 +1009,9 @@ impl API {
 
     pub fn concat_transform(&mut self, tr: Vec<Float>) {
         assert_eq!(tr.len(), 16);
-        let t = Transform::from_matrix(&Matrix4::from_row_slice(&tr));
+        let t = Transform::from_matrix(&Matrix4::from_column_slice(&tr));
         verify_initialized!(self, "ConcatTransform");
-        for_active_transform!(self, t);
+        for_active_transform!(self, *t, t);
 
         if self.opts.cat || self.opts.to_ply {
             print!("{:indent$} ConcatTransform [ ", "", indent=self.indent_count);
@@ -789,8 +1118,8 @@ impl API {
     pub fn pixel_filter(&mut self, name: &str, params: ParamSet) {
         verify_options!(self, "PixelFilter");
 
-        self.render_options.film_name = name.to_owned();
-        self.render_options.film_params = params.clone();
+        self.render_options.filter_name = name.to_owned();
+        self.render_options.filter_params = params.clone();
 
         if self.opts.cat || self.opts.to_ply {
             print!("{:indent$} PixelFilter \"{}\"", "", name, indent=self.indent_count);
@@ -852,7 +1181,7 @@ impl API {
     }
 
     pub fn include(&mut self, name: &str) -> anyhow::Result<()> {
-        unimplemented!()
+        pbrtparser::parse(name, self)
     }
 
     pub fn camera(&mut self, name: &str, params: ParamSet) {
@@ -1056,6 +1385,7 @@ impl API {
 
         if self.opts.cat || self.opts.to_ply {
             print!("{:indent$} Material \"{}\" ", "", name, indent=self.indent_count);
+            // TODO: print params
         }
     }
 
@@ -1109,7 +1439,6 @@ impl API {
         match self.graphics_state.named_materials.get(name) {
             Some(m) => self.graphics_state.current_material = Some(m.clone()),
             _ => error!("NamedMaterial \"{}\" unknown", name)
-
         }
     }
 
@@ -1117,12 +1446,12 @@ impl API {
         verify_world!(self, "LightSource");
         warn_if_animated_transform!(self, "LightSource");
         let mi = self.graphics_state.create_medium_interface(&self.render_options);
-        let lt = make_light(name, params, &self.curr_transform[0], &mi);
+        let lt = make_light(name, params, &self.curr_transform[0], mi, &self.opts);
 
-        if lt.is_none() {
-            error!("LightSource: light type \"{}\" unknown.", name);
+        if let Some(val) = lt {
+            self.render_options.lights.push(val);
         } else {
-            self.render_options.lights.push(lt.unwrap());
+            error!("LightSource: light type \"{}\" unknown.", name);
         }
 
         if self.opts.cat || self.opts.to_ply {
@@ -1146,9 +1475,8 @@ impl API {
 
     pub fn shape(&mut self, name: &str, params: &ParamSet) {
         verify_world!(self, "Shape");
-        let mut prims: Vec<Arc<Primitives>> = Vec::new();
+        let mut prims: Vec<Arc<Primitives>>;
         let mut area_lights = Vec::new();
-        //let mut cache = TRANSFORM_CACHE.lock().unwrap();
 
         if self.opts.cat || self.opts.to_ply && name != "trianglemesh" {
             print!("{:indent$} Shape \"{}\" ", "", name, indent=self.indent_count);
@@ -1160,7 +1488,6 @@ impl API {
             // Initialize prims and areaLights for static shape
 
             // Create shapes for shape name
-            //let cache = &mut self.transform_cache;
             let curr = &self.curr_transform[0];
             let obj_to_world = self.transform_cache.lookup(curr);
             let inv = Transform::inverse(curr);
@@ -1169,10 +1496,10 @@ impl API {
 
             let shapes = make_shapes(
                 name,
-                &obj_to_world,
-                &world_to_obj,
+                obj_to_world,
+                world_to_obj,
                 self.graphics_state.reverse_orientation,
-                params);
+                params, &self.graphics_state.float_textures);
 
             if shapes.is_empty() {
                 return;
@@ -1188,8 +1515,9 @@ impl API {
                 let mut area = None;
 
                 if !self.graphics_state.area_light.is_empty() {
-                    if let Some(a) = make_area_light(&self.graphics_state.area_light, &self.curr_transform[0],
-                                                        &mi, &self.graphics_state.area_light_params, s) {
+                    if let Some(a) = make_area_light(
+                        &self.graphics_state.area_light, &self.curr_transform[0],
+                        &mi, &self.graphics_state.area_light_params, s, &self.opts) {
                         area = Some(a.clone());
                         area_lights.push(a)
                     }
@@ -1209,7 +1537,9 @@ impl API {
             let tr = Transform::default();
             let identity = self.transform_cache.lookup(&tr);
             let orientation = self.graphics_state.reverse_orientation;
-            let shapes = make_shapes(name, &identity, &identity, orientation, params);
+            let shapes = make_shapes(
+                name, identity.clone(), identity,
+                orientation, params, &self.graphics_state.float_textures);
 
             if shapes.is_empty() {
                 return;
@@ -1224,7 +1554,6 @@ impl API {
             shapes.iter().for_each(|s| {
                 let prim = GeometricPrimitive::new(s.clone(), mtl.clone(), None, mi.clone());
                 prims.push(Arc::new(prim.into()));
-
             });
 
             // Create single TransformPrimitive for prims
@@ -1241,8 +1570,7 @@ impl API {
 
             if prims.len() > 1 {
                 let bvh = BVHAccel::new(prims, 1, SplitMethod::SAH);
-                let mut new_prims: Vec<Arc<Primitives>> = Vec::new();
-                new_prims.push(Arc::new(bvh.into()));
+                let new_prims: Vec<Arc<Primitives>> = vec![Arc::new(bvh.into())];
                 prims = new_prims;
             }
 
@@ -1267,14 +1595,7 @@ impl API {
             primitives.append(&mut prims);
 
             if !area_lights.is_empty() {
-                let mut ls: Vec<Arc<Lights>> = area_lights.iter().map(|l| {
-                    let c = (**l).clone();
-                    let light: Lights = c.into();
-
-                    Arc::new(light)
-                }).collect();
-
-                lights.append(&mut ls)
+                lights.append(&mut area_lights)
             }
         }
     }
@@ -1318,7 +1639,7 @@ impl API {
 
         self.render_options.current_instance = None;
         self.attribute_end();
-        // TODO nObjectInstancesCreated
+        nobject_instances_created::inc();
     }
 
     pub fn object_instance(&mut self, name: &str) {
@@ -1347,8 +1668,8 @@ impl API {
             return;
         }
 
+        nobject_instances_used::inc();
 
-        // TODO nObjectInstancesCreated
         if instance.len() > 1 {
             // Create aggregate for instance Primitives
             // TODO: check if it's ok to move the instance
@@ -1394,28 +1715,31 @@ impl API {
         // Create scene and render
         if self.opts.cat || self.opts.to_ply {
             println!("{:indent$} WorldEnd", "", indent=self.indent_count);
-            return
+        } else {
+            let mi = self.graphics_state
+                .create_medium_interface(&self.render_options);
+            let integrator =
+                self.render_options.make_integrator(&self.opts, &mut self.transform_cache, mi);
+            let scene = self.render_options.make_scene();
+
+            // TODO: ProfilerState
+            if let Some(mut integ) = integrator {
+                integ.render(&scene)
+            }
         }
-
-        let integrator = self.render_options.make_integrator();
-        let scene = self.render_options.make_scene();
-
-        // TODO: ProfilerState
-        // if scene.is_some() && integrator.is_some() {
-        //     integrator.unwrap().render(&scene.unwrap())
-        // }
 
         // Clean up after rendering
         self.graphics_state = GraphicsState::new();
         self.transform_cache.clear();
         self.current_state = APIState::OptionsBlock;
-        //TODO: ImageTexture
+        clear_cache();
         self.render_options = Default::default();
 
-        if self.opts.cat && !self.opts.to_ply {
+        if !self.opts.cat && !self.opts.to_ply {
             // TODO: ThreadStats
             if !self.opts.quiet {
-                print_stats(std::io::stdout())
+                print_stats(std::io::stdout());
+                clear_stats();
             }
         }
 
@@ -1425,7 +1749,6 @@ impl API {
 
         self.active_transform_bits = ALL_TRANSFORM_BITS as u32;
         self.named_coordinate_system.clear();
-
     }
 }
 
