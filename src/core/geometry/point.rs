@@ -1,4 +1,3 @@
-use num;
 use crate::core::pbrt::*;
 use super::vector::{Vector3, Vector2};
 use std::ops::{Add, Mul, AddAssign, MulAssign, SubAssign, Sub, Div, DivAssign, Index, IndexMut, Neg};
@@ -95,6 +94,22 @@ impl<T> Point2<T> {
 impl Point2f {
     pub fn lerp(&self, t: Float, p: &Self) -> Self {
         lerp(t, *self, *p)
+    }
+
+    pub fn maxf(&self, p2: &Self) -> Self
+
+    {
+        Point2::new(
+            self.x.max(p2.x),
+            self.y.max(p2.y)
+        )
+    }
+
+    pub fn minf(&self, p2: &Self) -> Self {
+        Point2::new(
+            self.x.min(p2.x),
+            self.y.min(p2.y)
+        )
     }
 }
 
@@ -217,7 +232,7 @@ impl Div<Float> for Point2<Float> {
 
     fn div(self, rhs: Float) -> Point2<Float> {
         assert_ne!(0.0 as Float, rhs);
-        let d = 1.0 as Float / rhs;
+        let d = 1.0 / rhs;
 
         Point2::<Float> {
             x: self.x * d,
@@ -228,7 +243,7 @@ impl Div<Float> for Point2<Float> {
 
 impl DivAssign<Float> for Point2<Float> {
     fn div_assign(&mut self, rhs: Float) {
-        let d = 1.0 as Float / rhs;
+        let d = 1.0 / rhs;
 
         self.x *= d;
         self.y *= d;
@@ -403,7 +418,7 @@ impl<T> Add for Point3<T>
         Point3::<T> {
             x: self.x + rhs.x,
             y: self.y + rhs.y,
-            z: self.z + self.z
+            z: self.z + rhs.z
         }
     }
 }
