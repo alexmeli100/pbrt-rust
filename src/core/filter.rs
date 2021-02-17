@@ -24,3 +24,9 @@ pub trait Filter {
     fn radius(&self) -> Vector2f;
 }
 
+impl Default for Filters {
+    fn default() -> Self {
+        BoxFilter::new(Vector2f::default()).into()
+    }
+}
+
