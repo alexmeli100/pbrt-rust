@@ -1,9 +1,10 @@
+
 use enum_dispatch::enum_dispatch;
 use std::fmt::{Display, Result, Formatter};
 use std::path::Path;
-use log::{error};
+use log::{error, info};
 use byteorder::{ReadBytesExt, LittleEndian};
-use crate::core::geometry::vector::Vector3f;
+use crate::core::geometry::vector::{Vector3f};
 use crate::core::pbrt::{Float, clamp, INV_PI, PI, radians, INFINITY};
 use crate::core::geometry::point::Point2f;
 use crate::core::spectrum::{Spectrum, SpectrumType};
@@ -14,10 +15,14 @@ use crate::core::microfacet::{MicrofacetDistributions, MicrofacetDistribution};
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
-use crate::core::interpolation::{catmull_rom_weights, fourier};
+use crate::core::interpolation::{catmull_rom_weights, fourier, sample_catmull_rom_2d, sample_fourier};
 use smallvec::{SmallVec, smallvec};
-use crate::core::interaction::{SurfaceInteraction, Interaction};
+use crate::core::interaction::{SurfaceInteraction};
 use crate::core::rng::ONE_MINUS_EPSILON;
+use crate::core::mipmap::Clampable;
+use crate::materials::hair::HairBSDF;
+use crate::core::bssrdf::SeparableBSSRDFAdapter;
+use crate::materials::disney::{DisneyFakeSS, DisneyDiffuse, DisneyRetro, DisneySheen, DisneyClearcoat, DisneyFresnel};
 
 const MAX_BXDFS: usize = 8;
 
@@ -32,12 +37,12 @@ pub fn fr_dielectric(mut cos_thetai: Float, mut etai: Float, mut etat: Float) ->
     }
 
     // Compute cosThetaT using snell's law
-    let sin_thetai = (0.0 as Float).max(1.0 - cos_thetai * cos_thetai);
+    let sin_thetai = (1.0 - cos_thetai * cos_thetai).max(0.0);
     let sin_thetat = etai / etat * sin_thetai;
 
     // Handle total internal reflection
     if sin_thetat >= 1.0 { return 1.0; }
-    let cos_thetat = (0.0 as Float).max(1.0 - sin_thetat * sin_thetat);
+    let cos_thetat = (1.0 - sin_thetat * sin_thetat).max(0.0);
     let r_parl = ((etat * cos_thetai) - (etai * cos_thetat)) /
                  ((etat * cos_thetai) + (etai * cos_thetat));
     let r_perp = ((etai * cos_thetai) - (etat * cos_thetat)) /
@@ -87,7 +92,7 @@ pub fn abs_cos_theta(w: &Vector3f) -> Float {
 
 #[inline(always)]
 pub fn sin2_theta(w: &Vector3f) -> Float {
-    (0.0 as Float).max(1.0 - cos2_theta(w))
+    (1.0 - cos2_theta(w)).max(0.0)
 }
 
 #[inline(always)]
@@ -148,14 +153,14 @@ pub fn cos_d_phi(wa: &Vector3f, wb: &Vector3f) -> Float {
 }
 
 #[inline(always)]
-fn reflect(wo: &Vector3f, n: &Vector3f) -> Vector3f {
+pub fn reflect(wo: &Vector3f, n: &Vector3f) -> Vector3f {
     -(*wo)  + *n * 2.0 * wo.dot(n)
 }
 
-fn refract(wi: &Vector3f, n: &Normal3f, eta: Float, wt: &mut Vector3f) -> bool {
+pub fn refract(wi: &Vector3f, n: &Normal3f, eta: Float, wt: &mut Vector3f) -> bool {
     // Compute costheta using Snell's law
     let cos_thetai = n.dot_vec(wi);
-    let sin_thetai = (0.0 as Float).max(1.0 * cos_thetai * cos_thetai);
+    let sin_thetai = (1.0 * cos_thetai * cos_thetai).max(0.0);
     let sin_thetat = eta * eta * sin_thetai;
 
     // Handle internal reflection for transmission
@@ -334,22 +339,55 @@ impl FourierBSDFTable {
 
 #[enum_dispatch]
 pub enum BxDFs<'a> {
-    OrenNayar,
-    FourierBSDF,
-    FresnelSpecular,
-    SpecularTransmission,
-    LambertianReflection,
-    LambertianTransmission,
+    DisneyDiffuse(DisneyDiffuse),
+    DisneyFakeSS(DisneyFakeSS),
+    DisneyRetro(DisneyRetro),
+    DisneySheen(DisneySheen),
+    DisneyClearcoat(DisneyClearcoat),
+    OrenNayar(OrenNayar),
+    HairBSDF(HairBSDF),
+    FourierBSDF(FourierBSDF),
     ScaledBxDF(ScaledBxDF<'a>),
     FresnelBlend(FresnelBlend<'a>),
+    FresnelSpecular(FresnelSpecular),
+    SeparableBSSRDFAdapter(SeparableBSSRDFAdapter),
+    SpecularTransmission(SpecularTransmission),
+    LambertianReflection(LambertianReflection),
+    LambertianTransmission(LambertianTransmission),
     SpecularReflection(SpecularReflection<'a>),
     MicrofacetReflection(MicrofacetReflection<'a>),
     MicrofacetTransmission(MicrofacetTransmission<'a>)
 }
 
+impl<'a> Display for BxDFs<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            BxDFs::OrenNayar(ref b) => write!(f, "{}", b),
+            BxDFs::HairBSDF(ref b) => write!(f, "{}", b),
+            BxDFs::FourierBSDF(ref b) => write!(f, "{}", b),
+            BxDFs::ScaledBxDF(ref b) => write!(f, "{}", b),
+            BxDFs::FresnelBlend(ref b) => write!(f, "{}", b),
+            BxDFs::FresnelSpecular(ref b) => write!(f, "{}", b),
+            BxDFs::SpecularTransmission(ref b) => write!(f, "{}", b),
+            BxDFs::SpecularReflection(ref b) => write!(f, "{}", b),
+            BxDFs::LambertianTransmission(ref b) => write!(f, "{}", b),
+            BxDFs::LambertianReflection(ref b) => write!(f, "{}", b),
+            BxDFs::MicrofacetTransmission(ref b) => write!(f, "{}", b),
+            BxDFs::MicrofacetReflection(ref b) => write!(f, "{}", b),
+            BxDFs::SeparableBSSRDFAdapter(ref b) => write!(f, "{}", b),
+            BxDFs::DisneyDiffuse(ref b) => write!(f, "{}", b),
+            BxDFs::DisneyClearcoat(ref b) => write!(f, "{}", b),
+            BxDFs::DisneySheen(ref b) => write!(f, "{}", b),
+            BxDFs::DisneyRetro(ref b) => write!(f, "{}", b),
+            BxDFs::DisneyFakeSS(ref b) => write!(f, "{}", b),
+
+        }
+    }
+}
+
 #[enum_dispatch(BxDFs)]
 pub trait BxDF {
-    fn matches_flags(&self, t: BxDFType) -> bool;
+    fn matches_flags(&self, t: u8) -> bool;
 
     fn get_type(&self) -> u8;
 
@@ -411,14 +449,16 @@ pub trait BxDF {
     }
 }
 
+#[macro_export]
 macro_rules! matches_flags_bxdf {
     () => {
-        fn matches_flags(&self, t: BxDFType) -> bool {
-            (self.bx_type & t as u8) == self.bx_type
+        fn matches_flags(&self, t: u8) -> bool {
+            (self.bx_type & t) == self.bx_type
         }
     }
 }
 
+#[macro_export]
 macro_rules! get_type {
     () => {
         fn get_type(&self) -> u8 {
@@ -442,8 +482,14 @@ impl<'a> ScaledBxDF<'a> {
     }
 }
 
+impl<'a> Display for ScaledBxDF<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "[ ScaledBxDF bxdf: {} scale {} ]", self.bxdf, self.scale)
+    }
+}
+
 impl<'a> BxDF for ScaledBxDF<'a> {
-    fn matches_flags(&self, t: BxDFType) -> bool {
+    fn matches_flags(&self, t: u8) -> bool {
         self.bxdf.matches_flags(t)
     }
 
@@ -483,15 +529,21 @@ pub trait Fresnel: Display {
 
 #[enum_dispatch(Display, Fresnel)]
 pub enum Fresnels {
-    FresnelConductor,
-    FresnelDielectric,
-    FresnelNoOp
+    FresnelConductor(FresnelConductor),
+    FresnelDielectric(FresnelDielectric),
+    DisneyFresnel(DisneyFresnel),
+    FresnelNoOp(FresnelNoOp)
 }
 
 // TODO: Fix display for fresnels
 impl Display for Fresnels {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.to_string())
+        match self {
+            Fresnels::FresnelConductor(ref fr) => write!(f, "{}", fr),
+            Fresnels::FresnelDielectric(ref fr) => write!(f, "{}", fr),
+            Fresnels::FresnelNoOp(ref fr) => write!(f, "{}", fr),
+            Fresnels::DisneyFresnel(ref fr) => write!(f, "{}", fr),
+        }
     }
 }
 
@@ -1148,7 +1200,7 @@ impl<'a> BxDF for FresnelBlend<'a> {
         } else {
             u[0] = (2.0 * (u[0] - 0.5)).min(ONE_MINUS_EPSILON);
             //Sample microfacet orientation wh and reflected direction wi
-            let wh = self.distribution.sample_wh(wo, u);
+            let wh = self.distribution.sample_wh(wo, &u);
             *wi = reflect(wo, &wh);
 
             if !same_hemisphere(wo, &*wi) { return Spectrum::new(0.0); }
@@ -1217,6 +1269,9 @@ impl BxDF for FourierBSDF {
             return Spectrum::new(0.0);
         }
 
+        // println!("{:?}", weightsi);
+        // println!("{:?}", weightso);
+
         // Allocate storage to accumulate ak coefficients
         let mut ak: SmallVec<[Float; 256]> = smallvec![0.0; (self.table.nmax * self.table.nchannels) as usize];
 
@@ -1243,6 +1298,8 @@ impl BxDF for FourierBSDF {
             }
         }
 
+        //println!("{:?}", ak);
+
         // Evaluete Fourier expansion for angle phi
         let Y = (0.0 as Float).max(fourier(&ak, 0, nmax, cos_phi));
         let mut scale = if mui != 0.0 {
@@ -1250,6 +1307,8 @@ impl BxDF for FourierBSDF {
         } else {
             0.0
         };
+
+        //println!("Y: {}, scale: {}", Y, scale);
 
         // Update scale to account for adjoint light transport
         if self.mode == TransportMode::Radiance && mui * muo > 0.0 {
@@ -1264,7 +1323,6 @@ impl BxDF for FourierBSDF {
         if self.table.nchannels == 1 {
             return Spectrum::new(Y * scale);
         }
-
         // Compute and return RGB colors for tabulated BSDF
         let R = fourier(&ak, self.table.nmax as usize, nmax, cos_phi);
         let B = fourier(&ak, 2 * self.table.nmax as usize, nmax, cos_phi);
@@ -1274,13 +1332,163 @@ impl BxDF for FourierBSDF {
         Spectrum::from_rgb(rgb, SpectrumType::Reflectance).clamps(0.0 ,INFINITY)
     }
 
-    fn sample_f(&self, wo: &Vector3f, wi: &mut Vector3f, sample: &Point2f, pdf: &mut f32, _sampled_type: &mut u8) -> Spectrum {
-        unimplemented!()
+    fn sample_f(
+        &self, wo: &Vector3f, wi: &mut Vector3f, u: &Point2f,
+        pdf: &mut f32, _sampled_type: &mut u8) -> Spectrum {
+        // Sample zenith angle component for FourierBSDF
+        let muo = cos_theta(wo);
+        let mut pdf_mu = 0.0;
+        let table = &self.table;
+        let mui = sample_catmull_rom_2d(
+            table.nmu, table.nmu, &table.mu,
+            &table.mu, &table.a0, &table.cdf,
+            muo, u[1], None, Some(&mut pdf_mu));
+        // Compute Fourier coefficients ak for (mui, muo)
+
+        // Determine offsets and weights for mui and muo
+        let (mut offseti, mut offseto) = (0, 0);
+        let (mut weightsi, mut weightso) = ([0.0; 4], [0.0; 4]);
+
+        if !table.get_weights_and_offset(mui, &mut offseti, &mut weightsi) ||
+           !table.get_weights_and_offset(muo, &mut offseto, &mut weightso) {
+            return Spectrum::new(0.0);
+        }
+
+
+        // Allocate storage to acculate ak coefficients
+        let mut ak: SmallVec<[Float; 256]> = smallvec![0.0; (table.nmax * table.nchannels) as usize];
+
+        // Accumulate weight sums of nearby ak coefficients
+        let mut mmax = 0;
+
+        for b in 0..4 {
+            for a in 0..4 {
+                // Add contribution of (a, b) to ak values
+                let weight = weightsi[a] * weightso[b];
+
+                if weight != 0.0 {
+                    let mut m = 0;
+                    let ap = table.get_ak(offseti + a as i32, offseto + b as i32, &mut m);
+                    mmax = std::cmp::max(mmax, m);
+
+                    for c in 0.. table.nchannels {
+                        for k in 0..m {
+                            ak[(c * table.nmax + k) as usize] += weight * table.a[(ap + c * m + k) as usize];
+                        }
+                    }
+                }
+            }
+        }
+
+        // Importance sample the luminance Fourier expansion
+        let mut phi = 0.0;
+        let mut pdf_phi = 0.0;
+        let Y = sample_fourier(&ak, &table.recip, mmax, u[0], &mut pdf_phi, &mut phi);
+        *pdf = (pdf_phi * pdf_mu).max(0.0);
+
+        // Compute the scattered direction for FourierBSDF
+        let sin2_thetai = (1.0 - mui * mui).max(0.0);
+        let mut norm = (sin2_thetai / sin2_theta(wo)).sqrt();
+
+        if norm.is_infinite() { norm = 0.0; }
+
+        let sin_phi = phi.sin();
+        let cos_phi = phi.cos();
+        *wi = -Vector3f::new(
+            norm * (cos_phi * wo.x - sin_phi * wo.y),
+            norm * (sin_phi * wo.x + cos_phi * wo.y),
+            mui
+        );
+
+        // Mathematically, wi will be normalized (if wo was). However, in
+        // practice, floating-point rounding error can cause some error to
+        // accumulate in the computed value of wi here. This can be
+        // catastrophic: if the ray intersects an object with the FourierBSDF
+        // again and the wo (based on such a wi) is nearly perpendicular to the
+        // surface, then the wi computed at the next intersection can end up
+        // being substantially (like 4x) longer than normalized, which leads to
+        // all sorts of errors, including negative spectral values. Therefore,
+        // we normalize again here.
+        *wi = wi.normalize();
+        //println!("{:?}", wi);
+        // Evaluate remaining Fourier expansions for angle phi
+        let mut scale = if mui != 0.0 { 1.0 / mui.abs() } else { 0.0 };
+        //println!("scale: {}, mui: {}", scale, mui);
+
+        if self.mode == TransportMode::Radiance && mui * muo > 0.0 {
+            let eta = if mui > 0.0 { 1.0 / table.eta } else { table.eta };
+            scale *= eta * eta;
+        }
+
+        if table .nchannels == 1 { return Spectrum::new(Y * scale); }
+
+        let R = fourier(&ak, table.nmax as usize, mmax, cos_phi as f64);
+        let B = fourier(&ak, (2 * table.nmax) as usize, mmax, cos_phi as f64);
+        let G = 1.39829 * Y - 0.100913 * B - 0.297375 * R;
+        let rgb = [R * scale, G * scale, B * scale];
+
+        Spectrum::from_rgb(rgb, SpectrumType::Reflectance).clamp(0.0, INFINITY)
+
     }
 
-    fn pdf(&self, wo: &Vector3f, wi: &Vector3f) -> f32 {
-        unimplemented!()
+    fn pdf(&self, wo: &Vector3f, wi: &Vector3f) -> Float {
+        // Find the zenith angle cosines and azimuth difference angle
+        let muo = cos_theta(wo);
+        let mui = cos_theta(&-(*wi));
+        let cos_phi = cos_d_phi(&(-*wi), wo);
+        let table = &self.table;
+
+        // Compute luminance Fourier coefficients ak for (mui, muo)
+        let mut offseti = 0;
+        let mut offseto = 0;
+        let mut weightsi = [0.0; 4];
+        let mut weightso = [0.0; 4];
+
+
+        if !table.get_weights_and_offset(mui, &mut offseti, &mut weightsi) ||
+            !table.get_weights_and_offset(muo, &mut offseto, &mut weightso) {
+            return 0.0;
+        }
+
+        let mut ak: SmallVec<[Float; 256]> = smallvec![0.0; table.nmax as usize];
+        let mut mmax = 0;
+
+        for o in 0..4 {
+            for i in 0..4 {
+                let weight = weightsi[i] * weightso[o];
+
+                if weight == 0.0 { continue; }
+
+                let mut order = 0;
+                let coeffs = table.get_ak(offseti + i as i32, offseto + o as i32, &mut order);
+                mmax = std::cmp::max(mmax, order);
+
+                for k in 0..order as usize {
+                    ak[k] += table.a[coeffs as usize + k] * weight;
+                }
+
+            }
+        }
+
+        // Evaluate probability of sampling wi
+        let mut rho = 0.0;
+
+        for o in 0..4 {
+            if weightso[o] == 0.0 { continue; }
+
+            rho += weightso[o] * table.cdf[((offseto + o as i32) * table.nmu + table.nmu - 1) as usize] * (2.0 * PI);
+        }
+
+
+
+        let Y = fourier(&ak, 0, mmax, cos_phi as f64);
+
+        if rho > 0.0 && Y > 0.0 { Y / rho } else { 0.0 }
     }
+
+
+
+
 }
 
 impl<'a> Display for FourierBSDF {
@@ -1292,7 +1500,7 @@ impl<'a> Display for FourierBSDF {
 }
 
 pub struct BSDF<'a>{
-    eta         : Float,
+    pub eta     : Float,
     ns          : Normal3f,
     ng          : Normal3f,
     ss          : Vector3f,
@@ -1316,13 +1524,13 @@ impl<'a> BSDF<'a> {
     }
 
     pub fn add(&mut self, b: &'a BxDFs<'a>) {
-        assert!(self.n_bxdfs > MAX_BXDFS);
+        assert!(self.n_bxdfs < MAX_BXDFS);
         self.bxdfs.push(b);
         self.n_bxdfs += 1;
     }
 
     #[inline(always)]
-    pub fn num_components(&self, flags: BxDFType) -> usize {
+    pub fn num_components(&self, flags: u8) -> usize {
         self.bxdfs.iter().filter(|b| b.matches_flags(flags)).count()
     }
 
@@ -1342,7 +1550,7 @@ impl<'a> BSDF<'a> {
         )
     }
 
-    pub fn f(&self, wow: &Vector3f, wiw: &Vector3f, f: BxDFType) -> Spectrum {
+    pub fn f(&self, wow: &Vector3f, wiw: &Vector3f, f: u8) -> Spectrum {
         // TODO: ProfilePhase
         let wi = self.world_to_local(wiw);
         let wo = self.world_to_local(wow);
@@ -1359,8 +1567,128 @@ impl<'a> BSDF<'a> {
             .fold(Spectrum::new(0.0), |b1, b2| b1 + b2)
     }
 
+    pub fn sample_f(
+        &self, wow: &Vector3f, wiw: &mut Vector3f, u: &Point2f,
+        pdf: &mut Float, ty: u8, sampled_type: &mut u8) -> Spectrum {
+        // TODO: ProfilePhase
+        // Choose which BXDF to sample
+        let matchingcomps = self.num_components(ty);
+
+        if matchingcomps == 0 {
+            *pdf = 0.0;
+            *sampled_type = 0u8;
+
+            return Spectrum::new(0.0);
+        }
+
+        let comp = std::cmp::min((u[0] * matchingcomps as Float).floor() as usize, matchingcomps - 1);
+
+        // Get BxDF pointer for chosen compoent
+        let mut bxdf: Option<&BxDFs> = None;
+        let mut count = comp;
+        let mut idx = 0;
+
+        for i in 0..self.n_bxdfs {
+            let matches = self.bxdfs[i].matches_flags(ty);
+            if matches && count == 0 {
+                bxdf = Some(self.bxdfs[i]);
+                // store index for later
+                idx = i;
+                count -= 1;
+                break
+            } else if matches {
+                count -= 1;
+            }
+        }
+
+        assert!(bxdf.is_some());
+        let b = bxdf.unwrap();
+        info!("BSDF::sample_f chose comp = {} / matching = {}, bxdf: {}",
+              comp, matchingcomps, b);
+
+        // Remap BxDF sample u to [0, 1)^2
+        let uremapped = Point2f::new(
+            (u[0] * matchingcomps as Float - comp as Float).min(ONE_MINUS_EPSILON),
+            u[1]);
+
+        // Sample chosen BxDF
+        let wo = self.world_to_local(wow);
+        let mut wi = Vector3f::default();
+        if wo.z == 0.0 { return Spectrum::new(0.0); }
+        *pdf = 0.0;
+
+        *sampled_type = b.get_type();
+
+
+        let mut f = b.sample_f(&wo, &mut wi, &uremapped, pdf, sampled_type);
+        info!(
+            "For wo = {}, sampled f = {}, pdf = {}, ratio = {}, wi = {}" ,
+            wo, f, *pdf, (if *pdf > 0.0 { f / *pdf } else { Spectrum::new(0.0) }), wi);
+
+        if *pdf == 0.0 {
+            *sampled_type = 0;
+        }
+
+        *wiw = self.local_to_world(&wi);
+
+        // Compute overall PDF with all matching BxDFs
+        if (b.get_type() & BxDFType::Specular as u8 == 0) && matchingcomps > 1 {
+            for i in 0..self.n_bxdfs {
+                if idx != i && self.bxdfs[i].matches_flags(ty) {
+                    *pdf += self.bxdfs[i].pdf(&wo, &wi);
+                }
+            }
+        }
+
+        if matchingcomps > 1 { *pdf /= matchingcomps as Float; }
+
+        // Compute value of BSDF for sampled direction
+        if b.get_type() & BxDFType::Specular as u8 == 0 {
+            let reflect = wiw.dot_norm(&self.ng) * wow.dot_norm(&self.ng) > 0.0;
+            f = Spectrum::new(0.0);
+
+            for i in 0..self.n_bxdfs {
+                if self.bxdfs[i].matches_flags(ty) &&
+                    ((reflect && (self.bxdfs[i].get_type() & BxDFType::Reflection as u8 != 0)) ||
+                     (reflect && (self.bxdfs[i].get_type() & BxDFType::Transmission as u8 != 0))) {
+                    f += self.bxdfs[i].f(&wo, &wi);
+                }
+            }
+        }
+
+        info!(
+            "Overall f = {}, pdf = {}, ratio = {}",
+            f, *pdf, (if *pdf > 0.0 { f / *pdf } else { Spectrum::new(0.0) }));
+
+        f
+    }
+
+    pub fn pdf(&self, wow: &Vector3f, wiw: &Vector3f, flags: u8) -> Float {
+        // TODO: ProfilePhase
+        if self.n_bxdfs == 0 { return 0.0; }
+
+        let wo = self.world_to_local(wow);
+        let wi = self.world_to_local(wiw);
+        if wo.z == 0.0 { return 0.0; }
+        let mut pdf = 0.0;
+        let mut matchingcomps = 0;
+
+        for i in 0..self.n_bxdfs {
+            if self.bxdfs[i].matches_flags(flags) {
+                matchingcomps += 1;
+                pdf += self.bxdfs[i].pdf(&wo, &wi);
+            }
+        }
+
+        if matchingcomps > 0 {
+            pdf / matchingcomps as Float
+        } else {
+            0.0
+        }
+    }
+
     pub fn rho(&self, wo_world: &Vector3f, nsamples: usize,
-               samples: &[Point2f], f: BxDFType) -> Spectrum {
+               samples: &[Point2f], f: u8) -> Spectrum {
         let wo = self.world_to_local(wo_world);
 
         self.bxdfs.iter()
@@ -1370,7 +1698,7 @@ impl<'a> BSDF<'a> {
     }
 
     pub fn rho2(&self, nsamples: usize, samples1: &[Point2f],
-                samples2: &[Point2f], f: BxDFType) -> Spectrum {
+                samples2: &[Point2f], f: u8) -> Spectrum {
         self.bxdfs.iter()
             .filter(|b| b.matches_flags(f))
             .map(|b| b.rho2(nsamples, samples1, samples2))
