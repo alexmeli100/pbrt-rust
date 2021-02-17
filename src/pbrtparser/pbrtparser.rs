@@ -1,7 +1,7 @@
 use log::{warn, error};
 use crate::core::paramset::ParamSet;
 use crate::core::geometry::normal::Normal3f;
-use crate::core::pbrt::Float;
+use crate::core::pbrt::{Float, Options};
 use crate::core::geometry::vector::{Vector3f, Vector2f};
 use crate::core::geometry::point::{Point3f, Point2f};
 use std::fmt::{Display, Formatter};
@@ -14,14 +14,23 @@ use std::fs::File;
 use std::io::prelude::Read;
 use crate::pbrtparser::lexer::Lexer;
 use crate::core::api::API;
+use std::path::{Path};
 
 lalrpop_mod!(pub commands);
 
 lazy_static! {
-    static ref PARSER: commands::CommandsParser = commands::CommandsParser::new();
+    pub static ref PARSER: commands::CommandsParser = commands::CommandsParser::new();
 }
 
-pub fn parse(name: &str, api: &mut API) -> Result<()> {
+pub fn pbrt_parse<P: AsRef<Path>>(name: P, opts: Options) -> Result<()> {
+    // TODO: set search directory
+    let mut api = API::default();
+    api.init(opts);
+
+    parse(name, &mut api)
+}
+
+pub fn parse<P: AsRef<Path>>(name: P, api: &mut API) -> Result<()> {
     let commands = parse_file(name)?;
 
     for c in commands.into_iter() {
@@ -76,13 +85,13 @@ pub fn parse(name: &str, api: &mut API) -> Result<()> {
     Ok(())
 }
 
-pub fn parse_file(name: &str) -> Result<Vec<PBRTCommands>> {
-    let mut file = File::open(name)?;
+pub fn parse_file<P: AsRef<Path>>(name: P) -> Result<Vec<PBRTCommands>> {
+    let mut file = File::open(name.as_ref())?;
     let mut s = String::new();
     file.read_to_string(&mut s)?;
 
    PARSER.parse(Lexer::new(&s))
-       .map_err(|e| anyhow!("error parsing file \"{}\"", name))
+       .map_err(|_e| anyhow!("error parsing file \"{}\"", name.as_ref().display()))
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -103,6 +112,7 @@ pub enum ParamType {
     Texture
 }
 
+#[derive(Debug)]
 pub enum ArrayVals {
     STR(Vec<String>),
     NUM(Vec<Float>)
@@ -129,6 +139,7 @@ pub struct ParamListItem {
 
 }
 
+
 impl ParamListItem {
     fn new(ty: ParamType, name: String, d: Option<Vec<Float>>, s: Option<Vec<String>>) -> Self {
         Self {
@@ -154,20 +165,20 @@ pub fn param_item(s: String, vals: ArrayVals) -> ParamListItem {
     let name = split.next().unwrap();
 
     let ty = match typ {
-        "int"       => ParamType::Int,
-        "bool"      => ParamType::Bool,
-        "float"     => ParamType::Float,
-        "vector2"   => ParamType::Vector2,
-        "vector3"   => ParamType::Vector3,
-        "point2"    => ParamType::Point2,
-        "point3"    => ParamType::Point3,
-        "normal"    => ParamType::Normal,
-        "rgb/color" => ParamType::RGB,
-        "xyz"       => ParamType::XYZ,
-        "blackbody" => ParamType::BlackBody,
-        "spectrum"  => ParamType::Spectrum,
-        "string"    => ParamType::String,
-        "texture"   => ParamType::Texture,
+        "int" | "integer"       => ParamType::Int,
+        "bool"                  => ParamType::Bool,
+        "float"                 => ParamType::Float,
+        "vector2"               => ParamType::Vector2,
+        "vector3"               => ParamType::Vector3,
+        "point2"                => ParamType::Point2,
+        "point3" | "point"      => ParamType::Point3,
+        "normal"                => ParamType::Normal,
+        "rgb/color" | "color"   => ParamType::RGB,
+        "xyz"                   => ParamType::XYZ,
+        "blackbody"             => ParamType::BlackBody,
+        "spectrum"              => ParamType::Spectrum,
+        "string"                => ParamType::String,
+        "texture"               => ParamType::Texture,
         _           => panic!("unknown parameter type {}", typ)
     };
 
@@ -354,7 +365,7 @@ fn add_blackbody(p: &mut ParamSet, name: &str, mut floats: Vec<Float>) {
     p.add_blackbody_spectrum(name, &floats, size);
 }
 
-fn add_spectrum(p: &mut ParamSet, name: &str, mut item: ParamListItem) {
+fn add_spectrum(p: &mut ParamSet, name: &str, item: ParamListItem) {
     if item.string_values.is_some() {
         let files = item.string_values.unwrap();
         p.add_sampled_spectrum_files(name, &files, files.len());
@@ -413,20 +424,22 @@ fn add_params(p: &mut ParamSet, item: ParamListItem) {
         _ => {}
     }
 
+    let name = item.name.to_owned();
+
     match ty {
-        ParamType::Spectrum   => add_spectrum(p, &item.name.to_owned(), item),
-        ParamType::Int        => add_ints(p, &item.name, item.double_values.unwrap()),
-        ParamType::Float      => add_float(p, &item.name, item.double_values.unwrap()),
-        ParamType::String     => add_strings(p, &item.name, item.string_values.unwrap()),
-        ParamType::Bool       => add_bools(p, &item.name, item.string_values.unwrap()),
-        ParamType::Point2     => add_point2(p, &item.name, item.double_values.unwrap()),
-        ParamType::Point3     => add_point3(p, &item.name, item.double_values.unwrap()),
-        ParamType::Vector2    => add_vector2(p, &item.name, item.double_values.unwrap()),
-        ParamType::Vector3    => add_vector3(p, &item.name, item.double_values.unwrap()),
-        ParamType::Normal     => add_normal(p, &item.name, item.double_values.unwrap()),
-        ParamType::XYZ        => add_xyz(p, &item.name, item.double_values.unwrap()),
-        ParamType::RGB        => add_rgb(p, &item.name, item.double_values.unwrap()),
-        ParamType::BlackBody  => add_blackbody(p, &item.name, item.double_values.unwrap()),
-        ParamType::Texture    => add_texture(p, &item.name, item.string_values.unwrap())
+        ParamType::Spectrum   => add_spectrum(p, &name, item),
+        ParamType::Int        => add_ints(p, &name, item.double_values.unwrap()),
+        ParamType::Float      => add_float(p, &name, item.double_values.unwrap()),
+        ParamType::String     => add_strings(p, &name, item.string_values.unwrap()),
+        ParamType::Bool       => add_bools(p, &name, item.string_values.unwrap()),
+        ParamType::Point2     => add_point2(p, &name, item.double_values.unwrap()),
+        ParamType::Point3     => add_point3(p, &name, item.double_values.unwrap()),
+        ParamType::Vector2    => add_vector2(p, &name, item.double_values.unwrap()),
+        ParamType::Vector3    => add_vector3(p, &name, item.double_values.unwrap()),
+        ParamType::Normal     => add_normal(p, &name, item.double_values.unwrap()),
+        ParamType::XYZ        => add_xyz(p, &name, item.double_values.unwrap()),
+        ParamType::RGB        => add_rgb(p, &name, item.double_values.unwrap()),
+        ParamType::BlackBody  => add_blackbody(p, &name, item.double_values.unwrap()),
+        ParamType::Texture    => add_texture(p, &name, item.string_values.unwrap())
     }
 }
