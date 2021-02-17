@@ -2,6 +2,8 @@ use std::ops::{Add, Mul, AddAssign, Sub, SubAssign, Neg, MulAssign, Div, DivAssi
 use crate::core::geometry::vector::{Vector3, Vector3f};
 use crate::core::pbrt::Float;
 use num::{Signed};
+use std::fmt::{Display, Formatter};
+use std::fmt;
 
 pub type Normal3f = Normal3<Float>;
 pub type Normal3i = Normal3<isize>;
@@ -146,7 +148,7 @@ impl<T> Add for Normal3<T>
         Normal3::<T> {
             x: self.x + rhs.x,
             y: self.y + rhs.y,
-            z: self.z + self.z
+            z: self.z + rhs.z
         }
     }
 }
@@ -252,7 +254,7 @@ impl Div<Float> for Normal3f {
 
     fn div(self, rhs: Float) -> Normal3f {
         assert_ne!(0.0 as Float, rhs);
-        let d = 1.0 as Float / rhs;
+        let d = 1.0 / rhs;
 
         Normal3f {
             x: self.x * d,
@@ -264,7 +266,7 @@ impl Div<Float> for Normal3f {
 
 impl DivAssign<Float> for Normal3<Float> {
     fn div_assign(&mut self, rhs: Float) {
-        let d = 1.0 as Float / rhs;
+        let d = 1.0 / rhs;
 
         self.x *= d;
         self.y *= d;
@@ -298,5 +300,12 @@ impl<T> IndexMut<usize> for Normal3<T> {
 
 impl<T> From<Vector3<T>> for Normal3<T> {
     fn from(v: Vector3<T>) -> Self { Normal3::new(v.x, v.y, v.z) }
+}
+
+impl<T> Display for Normal3<T>
+    where T: Display {
+    fn fmt(&self, f: &mut Formatter<'_>) ->fmt::Result {
+        write!(f, "[ {}, {}, {} ]", self.x, self.y, self.z)
+    }
 }
 
