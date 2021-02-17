@@ -1,6 +1,6 @@
 use enum_dispatch::enum_dispatch;
 use crate::core::interaction::SurfaceInteraction;
-use bumpalo::Bump;
+use bumpalo_herd::Member;
 use crate::core::texture::{Texture, TextureFloat};
 use std::sync::Arc;
 use std::fmt::{Display, Result, Formatter};
@@ -8,6 +8,16 @@ use crate::materials::matte::MatteMaterial;
 use crate::materials::plastic::PlasticMaterial;
 use crate::materials::fourier::FourierMaterial;
 use crate::materials::mix::MixMaterial;
+use crate::materials::glass::GlassMaterial;
+use crate::materials::mirror::MirrorMaterial;
+use crate::materials::hair::HairMaterial;
+use crate::materials::metal::MetalMaterial;
+use crate::materials::translucent::TranslucentMaterial;
+use crate::materials::substrate::SubstrateMaterial;
+use crate::materials::uber::UberMaterial;
+use crate::materials::kdsubsurface::KdSubsurfaceMaterial;
+use crate::materials::subsurface::SubsurfaceMaterial;
+use crate::materials::disney::DisneyMaterial;
 use crate::core::geometry::vector::{Vector2f, Vector3f};
 use crate::core::geometry::normal::Normal3f;
 
@@ -28,9 +38,9 @@ impl Display for TransportMode {
 
 #[enum_dispatch(Materials)]
 pub trait Material {
-    fn compute_scattering_functions<'a: 'a>(
-        &self, si: & mut SurfaceInteraction<'a>, arena: &'a Bump,
-        mode: TransportMode, allow_multiple_lobes: bool);
+    fn compute_scattering_functions<'b: 'b>(
+        &self, si: &mut SurfaceInteraction<'b>, arena: &Member<'b>,
+        mat: Option<Arc<Materials>>, mode: TransportMode, allow_multiple_lobes: bool);
 }
 
 pub fn bump(d: &Arc<TextureFloat>, si: &mut SurfaceInteraction) {
@@ -81,7 +91,17 @@ pub fn bump(d: &Arc<TextureFloat>, si: &mut SurfaceInteraction) {
 #[enum_dispatch]
 pub enum Materials {
     MixMaterial,
+    HairMaterial,
+    MetalMaterial,
+    UberMaterial,
+    GlassMaterial,
     MatteMaterial,
+    MirrorMaterial,
     PlasticMaterial,
     FourierMaterial,
+    DisneyMaterial,
+    SubstrateMaterial,
+    SubsurfaceMaterial,
+    TranslucentMaterial,
+    KdSubsurfaceMaterial
 }
