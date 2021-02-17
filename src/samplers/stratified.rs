@@ -48,6 +48,8 @@ impl StratifiedSampler {
 }
 
 impl Sampler for StratifiedSampler {
+    get_sampler_data!();
+
     fn start_pixel(&mut self, p: &Point2i) {
         // Generate single statified samples for the pixel
         let count = (self.xpixel_samples * self.ypixel_samples) as usize;
@@ -114,7 +116,7 @@ impl Sampler for StratifiedSampler {
     }
 }
 
-pub fn create_stratified_sampler(params: &ParamSet, quick_render: bool) -> Samplers {
+pub fn create_stratified_sampler(params: &ParamSet, quick_render: bool) -> Option<Box<Samplers>> {
     let jitter = params.find_one_bool("jitter", true);
     let mut xsamp = params.find_one_int("xsample", 4);
     let mut ysamp = params.find_one_int("ysamples", 4);
@@ -125,5 +127,7 @@ pub fn create_stratified_sampler(params: &ParamSet, quick_render: bool) -> Sampl
         ysamp = 1;
     }
 
-    StratifiedSampler::new(xsamp as usize, ysamp as usize, jitter, sd as usize).into()
+    Some(Box::new(StratifiedSampler::new(
+        xsamp as usize, ysamp as usize,
+        jitter, sd as usize).into()))
 }
