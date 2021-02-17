@@ -6,9 +6,12 @@ use crate::core::geometry::bounds::{Bounds2i, Bounds2f};
 use crate::core::parallel::AtomicFloat;
 use std::sync::RwLock;
 use log::{info, error, warn};
+use anyhow::Result;
 use typed_arena::Arena;
 use crate::core::geometry::vector::Vector2f;
 use crate::core::paramset::ParamSet;
+use crate::core::imageio::write_image;
+use std::path::{PathBuf};
 
 const FILTER_TABLE_WIDTH: usize = 16;
 
@@ -22,14 +25,14 @@ struct Pixel {
     xyz                 : [Float; 3],
     filter_weight_sum   : Float,
     splat_xyz           : [AtomicFloat; 3],
-    pad                 : Float
+    _pad                : Float
 }
 
 pub struct Film {
     pub full_resolution     : Point2i,
     pub diagonal            : Float,
     pub filter              : Filters,
-    pub filename            : String,
+    pub filename            : PathBuf,
     pub cropped_pixel_bounds: Bounds2i,
     pixels                  : RwLock<Vec<Pixel>>,
     filter_table            : [Float; FILTER_TABLE_WIDTH * FILTER_TABLE_WIDTH],
@@ -38,9 +41,8 @@ pub struct Film {
 }
 
 impl Film {
-    pub fn new(resolution: &Point2i, crop_window: &Bounds2f,
-               filt: Filters, diagonal: Float,
-               filename: &str, scale: Float, max_sample_luminance: Float) -> Self {
+    pub fn new(resolution: &Point2i, crop_window: &Bounds2f, filt: Filters, diagonal: Float,
+               filename: PathBuf, scale: Float, max_sample_luminance: Float) -> Self {
         let crop_pixel_bounds = Bounds2i::from_points(
             &Point2i::new(
                 (resolution.x as Float * crop_window.p_min.x).ceil() as isize,
@@ -87,7 +89,7 @@ impl Film {
         }
     }
 
-    pub fn get_sampe_bounds(&self) -> Bounds2i {
+    pub fn get_sample_bounds(&self) -> Bounds2i {
         let p1 = (Point2f::from(self.cropped_pixel_bounds.p_min) +
                   Vector2f::new(0.5, 0.5) - self.filter.radius()).floor();
         let p2 = (Point2f::from(self.cropped_pixel_bounds.p_max) -
@@ -125,7 +127,7 @@ impl Film {
                       &self.filter_table, FILTER_TABLE_WIDTH, self.max_sample_luminance)
     }
 
-    pub fn merge_film_tile(&mut self, tile: &mut FilmTile) {
+    pub fn merge_film_tile(&self, tile: &mut FilmTile) {
         // TODO: ProfilePhase
         let mut pixels = self.pixels.write().unwrap();
         info!("Merging film tile {}", tile.pixel_bounds);
@@ -139,7 +141,7 @@ impl Film {
             let xyz = tile_pixel.contrib_sum.to_xyz();
 
             for i in 0..3 {
-                merge_pixel.xyz[i] + xyz[i];
+                merge_pixel.xyz[i] += xyz[i];
             }
 
             merge_pixel.filter_weight_sum += tile_pixel.filter_weight_sum;
@@ -169,7 +171,7 @@ impl Film {
         }
     }
 
-    pub fn add_splat(&mut self, p: &Point2f, mut v: Spectrum) {
+    pub fn add_splat(&self, p: &Point2f, mut v: Spectrum) {
         // TODO: ProfilePhase
         if v.has_nans() {
             error!("Ignoring splatted spectrum with NaN values at ({}, {})", p.x, p.y);
@@ -200,7 +202,7 @@ impl Film {
         }
     }
 
-    pub fn write_image(&mut self, splat_scale: Float) {
+    pub fn write_image(&self, splat_scale: Float) -> Result<()> {
         // Convert image to RGB and compute final pixel values
         info!("Converting image to RGB and computing final weighted pixel values");
         let mut rgb = vec![0.0; (3 * self.cropped_pixel_bounds.area()) as usize];
@@ -220,9 +222,9 @@ impl Film {
 
             if filter_weight_sum != 0.0 {
                 let invwt = 1.0 / filter_weight_sum;
-                rgb[3 * offset] = (0.0 as Float).max(rgb[3 * offset] * invwt);
-                rgb[3 * offset + 1] = (0.0 as Float).max(rgb[3 * offset + 1] * invwt);
-                rgb[3 * offset + 2] = (0.0 as Float).max(rgb[3 * offset + 2] * invwt);
+                rgb[3 * offset] = 0.0_f32.max(rgb[3 * offset] * invwt);
+                rgb[3 * offset + 1] = 0.0_f32.max(rgb[3 * offset + 1] * invwt);
+                rgb[3 * offset + 2] = 0.0_f32.max(rgb[3 * offset + 2] * invwt);
             }
 
             // splate value at pixel
@@ -243,9 +245,10 @@ impl Film {
             offset += 1;
         }
 
-        info!("Writing image {} with bounds {}", self.filename, self.cropped_pixel_bounds);
+        info!("Writing image {} with bounds {}", self.filename.display(), self.cropped_pixel_bounds);
 
         // TODO: WriteImage
+        write_image(&self.filename, &rgb, &self.cropped_pixel_bounds, &self.full_resolution)
     }
 }
 
@@ -273,7 +276,7 @@ impl<'a> FilmTile<'a> {
         }
     }
 
-    pub fn add_sample(&'a mut self, pfilm: &Point2f, mut L: Spectrum, sample_weight: Float) {
+    pub fn add_sample(&mut self, pfilm: &Point2f, mut L: Spectrum, sample_weight: Float) {
         // TODO: ProfilePhase
         if L.y() > self.max_sample_luminance { L *= self.max_sample_luminance / L.y(); }
 
@@ -329,19 +332,21 @@ impl<'a> FilmTile<'a> {
     }
 }
 
-pub fn create_film(params: &ParamSet, filter: Filters, opts: Options) -> Film {
-    let filename = if opts.image_file != "" {
+pub fn create_film(params: &ParamSet, filter: Filters, opts: &Options) -> Film {
+    let filename = if !opts.image_file.as_os_str().is_empty() {
         let params_filename = params.find_one_string("filename", "".to_owned());
 
-        if params_filename != "" {
+        if !params_filename.is_empty() {
             warn!("Output filename supplied on command line. \"{}\" is overriding\
                   filename provided in scene description file, \"{}\"",
-                  opts.image_file, params_filename);
+                  opts.image_file.display(), params_filename);
         }
 
-        opts.image_file
+        opts.image_file.clone()
     } else {
-        params.find_one_string("filename", "pbrt.exr".to_owned())
+        let f = params.find_one_string("filename", "pbrt.exr".to_owned());
+
+        PathBuf::from(f)
     };
 
     let mut xres = params.find_one_int("xresolution", 1280);
@@ -382,6 +387,5 @@ pub fn create_film(params: &ParamSet, filter: Filters, opts: Options) -> Film {
 
     Film::new(
         &Point2i::new(xres, yres), &crop, filter,
-        diagonal, &filename, scale, max_sample_luminance)
-
+        diagonal, filename, scale, max_sample_luminance)
 }
