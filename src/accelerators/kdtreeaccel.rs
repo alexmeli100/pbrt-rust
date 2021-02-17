@@ -1,4 +1,4 @@
-use crate::core::pbrt::{Float, log2_uint, log2_int64, INFINITY};
+use crate::core::pbrt::{Float, log2_int64, INFINITY};
 use std::sync::Arc;
 use crate::core::primitive::{Primitive, Primitives};
 use crate::core::geometry::bounds::Bounds3f;
@@ -6,9 +6,9 @@ use crate::core::interaction::SurfaceInteraction;
 use crate::core::geometry::ray::Ray;
 use crate::core::geometry::vector::Vector3f;
 use crate::core::paramset::ParamSet;
-use crate::core::light::AreaLights;
+use crate::core::light::{Lights};
 use crate::core::material::{Materials, TransportMode};
-use bumpalo::Bump;
+use bumpalo_herd::Member;
 
 const MAX_TODO: usize = 64;
 
@@ -408,7 +408,10 @@ impl Primitive for KdTreeAccel {
         return self.bounds
     }
 
-    fn intersect(&self, r: &mut Ray, isect: &mut SurfaceInteraction) -> bool {
+    fn intersect(
+        &self, r: &mut Ray,
+        isect: &mut SurfaceInteraction,
+        _p: Arc<Primitives>) -> bool {
         let mut t_min = 0.0;
         let mut t_max = 0.0;
 
@@ -488,7 +491,7 @@ impl Primitive for KdTreeAccel {
                     let p = &self.primtives[one_prim as usize];
 
                     // Check one primitive inside leaf node
-                    if p.intersect(r, isect) { hit = true; }
+                    if p.intersect(r, isect, p.clone()) { hit = true; }
                 } else {
                     for i in 0..n_primitives {
                         let offset: i32;
@@ -498,7 +501,7 @@ impl Primitive for KdTreeAccel {
                         let p = &self.primtives[index];
 
                         // Check one primitive inside leaf node
-                        if p.intersect(r, isect) { hit = true}
+                        if p.intersect(r, isect, p.clone()) { hit = true}
                     }
                 }
 
@@ -628,11 +631,13 @@ impl Primitive for KdTreeAccel {
         panic!("BVH::get_material method called; should have gone to GeometricPrimitive")
     }
 
-    fn get_area_light(&self) -> Option<Arc<AreaLights>> {
+    fn get_area_light(&self) -> Option<Arc<Lights>> {
         panic!("BVH::get_area_light method called; should have gone to GeometricPrimitive")
     }
 
-    fn compute_scattering_functions<'a: 'a>(&self, isect: &mut SurfaceInteraction<'a>, arena: &'a Bump, mode: TransportMode, allow_multiple_lobes: bool) {
+    fn compute_scattering_functions<'b: 'b>(
+        &self, _isect: &mut SurfaceInteraction<'b>, _arena: &Member<'b>,
+        _mode: TransportMode, _allow_multiple_lobes: bool) {
         panic!("BVH::get_compute_scattering_functions method called; should have gone to GeometricPrimitive")
     }
 }
