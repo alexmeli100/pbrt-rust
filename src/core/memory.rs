@@ -24,7 +24,7 @@ impl<T: num::Zero + Copy, const LogBlockSize: usize> BlockedArrayX<T, {LogBlockS
 
         arr.ublocks = rures >> LogBlockSize;
 
-        let mut d = vec![T::zero(); rures * rvres];
+        let d = vec![T::zero(); rures * rvres];
 
         if let Some(ref block) = data {
             for v in 0..vres {
