@@ -6,8 +6,7 @@ use crate::core::geometry::normal::Normal3;
 use crate::core::geometry::ray::*;
 use crate::core::geometry::bounds::Bounds3f;
 use super::quaternion::*;
-use num::{Zero, One, Signed};
-use std::ops::{Mul, Add, Div, Sub};
+use std::ops::{Mul, Add, Sub};
 use std::fmt::Debug;
 use crate::core::interaction::SurfaceInteraction;
 use std::cell::Cell;
@@ -135,7 +134,7 @@ impl Transform {
         let m = Matrix4::from_row_slice(&[
             1.0, 0.0, 0.0, 0.0,
             0.0, cos_theta, -sin_theta, 0.0,
-            0.0, cos_theta, sin_theta, 0.0,
+            0.0, sin_theta, cos_theta, 0.0,
             0.0, 0.0, 0.0, 1.0
         ]);
 
@@ -276,14 +275,14 @@ impl Transform {
         let y = p.y;
         let z = p.z;
 
-        let xp = x*self.m[(0,0)] + y*self.m[(0,1)] + z*self.m[(0,2)] + self.m[(0,3)];
-        let yp = x*self.m[(1,0)] + y*self.m[(1,1)] + z*self.m[(1,2)] + self.m[(1,3)];
-        let zp = x*self.m[(2,0)] + y*self.m[(2,1)] + z*self.m[(2,2)] + self.m[(2,3)];
-        let wp = x*self.m[(3,0)] + y*self.m[(3,1)] + z*self.m[(3,2)] + self.m[(3,3)];
+        let xp = x * self.m[(0,0)] + y * self.m[(0,1)] + z * self.m[(0,2)] + self.m[(0,3)];
+        let yp = x * self.m[(1,0)] + y * self.m[(1,1)] + z * self.m[(1,2)] + self.m[(1,3)];
+        let zp = x * self.m[(2,0)] + y * self.m[(2,1)] + z * self.m[(2,2)] + self.m[(2,3)];
+        let wp = x * self.m[(3,0)] + y * self.m[(3,1)] + z * self.m[(3,2)] + self.m[(3,3)];
 
-        let x_abs_sum = (x*self.m[(0, 0)]).abs() + (y*self.m[(0, 1)]).abs() + (z*self.m[(0, 2)]).abs() + (self.m[(0, 3)]).abs();
-        let y_abs_sum = (x*self.m[(1, 0)]).abs() + (y*self.m[(1, 1)]).abs() + (z*self.m[(1, 2)]).abs() + (self.m[(1, 3)]).abs();
-        let z_abs_sum = (x*self.m[(2, 0)]).abs() + (y*self.m[(2, 1)]).abs() + (z*self.m[(2, 2)]).abs() + (self.m[(2, 3)]).abs();
+        let x_abs_sum = (x * self.m[(0, 0)]).abs() + (y * self.m[(0, 1)]).abs() + (z * self.m[(0, 2)]).abs() + (self.m[(0, 3)]).abs();
+        let y_abs_sum = (x * self.m[(1, 0)]).abs() + (y * self.m[(1, 1)]).abs() + (z * self.m[(1, 2)]).abs() + (self.m[(1, 3)]).abs();
+        let z_abs_sum = (x * self.m[(2, 0)]).abs() + (y * self.m[(2, 1)]).abs() + (z * self.m[(2, 2)]).abs() + (self.m[(2, 3)]).abs();
 
         *p_error = Vector3::new(x_abs_sum, y_abs_sum, z_abs_sum) * gamma(3);
         assert_ne!(wp, 0.0);
@@ -295,7 +294,7 @@ impl Transform {
         }
     }
 
-    pub fn transform_point_abs_errorf(&self, p: &Point3f, p_error: &Vector3f, abs_error: &mut Vector3f) -> Point3f {
+    pub fn transform_point_abs_error(&self, p: &Point3f, p_error: &Vector3f, abs_error: &mut Vector3f) -> Point3f {
         let x = p.x;
         let y = p.y;
         let z = p.z;
@@ -347,17 +346,17 @@ impl Transform {
         )
     }
 
-    pub fn transform_vector_error<T>(&self, v: &Vector3<T>, abs_error: &mut Vector3<T>) -> Vector3<T>
-        where T: Mul<Float, Output=T> + Add<T, Output=T> + Add<Float, Output=T> + Div<T, Output=T> + Copy + Signed + One + PartialEq + Zero + Debug + From<Float>
+    pub fn transform_vector_error(&self, v: &Vector3f, abs_error: &mut Vector3f) -> Vector3f
 
     {
         let x = v.x;
         let y = v.y;
         let z = v.z;
 
-        abs_error.x = T::from(gamma(3)) * (x*self.m[(0, 0)]).abs() + (y*self.m[(0, 1)]).abs() + (z*self.m[(0, 2)]).abs() + (self.m[(0, 3)]).abs();
-        abs_error.y = T::from(gamma(3)) * (x*self.m[(1, 0)]).abs() + (y*self.m[(1, 1)]).abs() + (z*self.m[(1, 2)]).abs() + (self.m[(1, 3)]).abs();
-        abs_error.z = T::from(gamma(3)) * (x*self.m[(2, 0)]).abs() + (y*self.m[(2, 1)]).abs() + (z*self.m[(2, 2)]).abs() + (self.m[(2, 3)]).abs();
+        let gamma = gamma(3);
+        abs_error.x = gamma * ((x * self.m[(0, 0)]).abs() + (y * self.m[(0, 1)]).abs() + (z * self.m[(0, 2)]).abs());
+        abs_error.y = gamma * ((x * self.m[(1, 0)]).abs() + (y * self.m[(1, 1)]).abs() + (z * self.m[(1, 2)]).abs());
+        abs_error.z = gamma * ((x * self.m[(2, 0)]).abs() + (y * self.m[(2, 1)]).abs() + (z * self.m[(2, 2)]).abs());
 
         Vector3::new(
             x*self.m[(0, 0)] + y*self.m[(0, 1)] + z*self.m[(0, 2)],
@@ -374,9 +373,9 @@ impl Transform {
         let z = n.z;
 
         Normal3::new(
-            x*self.m[(0, 0)] + y*self.m[(1, 0)] + z*self.m[(2, 0)],
-            x*self.m[(0, 1)] + y*self.m[(1, 1)] + z*self.m[(2, 1)],
-            x*self.m[(0, 2)] + y*self.m[(1, 2)] + z*self.m[(2, 2)]
+            x * self.m_inv[(0, 0)] + y * self.m_inv[(1, 0)] + z * self.m_inv[(2, 0)],
+            x * self.m_inv[(0, 1)] + y * self.m_inv[(1, 1)] + z * self.m_inv[(2, 1)],
+            x * self.m_inv[(0, 2)] + y * self.m_inv[(1, 2)] + z * self.m_inv[(2, 2)]
         )
     }
 
@@ -446,7 +445,7 @@ impl Transform {
 
     pub fn transform_surface_interaction<'a>(&self, si: &SurfaceInteraction<'a>) -> SurfaceInteraction<'a> {
         let mut ret = SurfaceInteraction::<'a>::default();
-        ret.p = self.transform_point_abs_errorf(&si.p, &si.p_error, &mut ret.p_error);
+        ret.p = self.transform_point_abs_error(&si.p, &si.p_error, &mut ret.p_error);
         ret.n = self.transform_normal(&si.n).normalize();
         ret.wo = self.transform_vector(&si.wo);
         ret.time = si.time;
@@ -533,7 +532,7 @@ pub struct AnimatedTransform {
     has_rotation        : bool,
     t                   : [Vector3f; 2],
     r                   : [Quaternion; 2],
-    s                   : [Matrix4<Float>; 2],
+    pub s                   : [Matrix4<Float>; 2],
     c1                  : [DerivativeTerm; 3],
     c2                  : [DerivativeTerm; 3],
     c3                  : [DerivativeTerm; 3],
@@ -1304,11 +1303,11 @@ impl AnimatedTransform {
 
         loop {
             let mut rnext = Matrix4::<Float>::identity();
-            let r_it = r.transpose().try_inverse().unwrap();
+            let rit = r.transpose().try_inverse().unwrap();
 
             for i in 0..4 {
                 for j in 0..4 {
-                    rnext[(i, j)] = 0.5 * (r[(i, j)] + r_it[(i, j)]);
+                    rnext[(i, j)] = 0.5 * (r[(i, j)] + rit[(i, j)]);
                 }
             }
 
@@ -1346,7 +1345,6 @@ impl AnimatedTransform {
         let dt = (time - self.start_time) / (self.end_time - self.start_time);
 
         // Interpolate translation at dt
-        //let trans = lerp(dt, self.t[0], self.t[1]);
         let trans = self.t[0] * (1.0 - dt) + self.t[1] * dt;
 
         // Interpolate rotation at dt
@@ -1438,10 +1436,9 @@ impl AnimatedTransform {
                                 self.c4[c].eval(p), self.c5[c].eval(p), theta,
                                 Interval::new(0.0, 1.0), &mut zeros, &mut nzero, 8);
 
-            println!("{}", nzero);
 
-            for i in 0..nzero {
-                let pz = self.transform_point(lerp(zeros[i], self.start_time, self.end_time), p);
+            for item in &zeros {
+                let pz = self.transform_point(lerp(*item, self.start_time, self.end_time), p);
                 bounds = bounds.union_point(&pz);
             }
         }
@@ -1550,8 +1547,6 @@ impl Mul for Interval {
 
 fn interval_find_zeros(c1: Float, c2: Float, c3: Float, c4: Float, c5: Float, theta: Float, i: Interval, zeros: &mut [Float], zero_count: &mut usize, depth: isize) {
     type I = Interval;
-
-    //println!("{}", c1);
 
     let c = I::from(2.0 * theta) * i;
     let range = I::from(c1) + (I::from(c2) + I::from(c3) * i) * c.cos() + (I::from(c4) + I::from(c5) * i) * c.sin();
