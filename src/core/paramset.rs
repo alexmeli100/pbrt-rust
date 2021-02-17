@@ -11,8 +11,8 @@ use crate::core::spectrum::{Spectrum, SpectrumType, black_body_normalized};
 use crate::core::cie::{N_CIE_SAMPLES, CIE_LAMBDA};
 use crate::core::fileutil::{absolute_path, resolve_filename};
 use crate::core::floatfile::read_float_file;
-use combine::lib::sync::Arc;
-use crate::core::texture::{Textures, TextureFloat, TextureSpec};
+use std::sync::Arc;
+use crate::core::texture::{TextureFloat, TextureSpec};
 use crate::textures::constant::ConstantTexture;
 use std::fmt::{Display, Formatter};
 use std::fmt;
@@ -262,6 +262,7 @@ impl ParamSet {
     find!(find_spectrum, spectra, Spectrum);
     find!(find_normal3f, normals, Normal3f);
     find!(find_vector2f, vector2fs, Vector2f);
+    find!(find_vector3f, vector3fs, Vector3f);
     find_one!(find_one_int, ints, isize);
     find_one!(find_one_bool, bools, bool);
     find_one!(find_one_float, floats, Float);
@@ -320,18 +321,102 @@ impl ParamSet {
     }
 
     pub fn print(&self, indent: usize) {
-        // TODO: print
-        unimplemented!()
+        print_items("integer", indent, &self.ints);
+        print_items("bool", indent, &self.bools);
+        print_items("float", indent, &self.floats);
+        print_items("point2", indent, &self.point2fs);
+        print_items("vector2", indent, &self.vector2fs);
+        print_items("point", indent, &self.point3fs);
+        print_items("vector", indent, &self.vector3fs);
+        print_items("normal", indent, &self.normals);
+        print_items("string", indent, &self.strings);
+        print_items("texture", indent, &self.textures);
+        print_items("rgb", indent, &self.spectra);
+
     }
+}
+
+macro_rules! display_param_values {
+    ($values:expr) => {{
+        $values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(" ")
+    }}
 }
 
 impl Display for ParamSet {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        unimplemented!()
+        for item in self.ints.iter() {
+            write!(
+                f, "integer \"{}\" [ {} ] ", item.name,
+                display_param_values!(&item.values))?;
+        }
+        for item in self.bools.iter() {
+            write!(
+                f, "bool \"{}\" [ {} ] ", item.name,
+                display_param_values!(&item.values))?;
+        }
+        for item in self.floats.iter() {
+            write!(
+                f, "float \"{}\" [ {} ] ", item.name,
+                display_param_values!(&item.values))?;
+        }
+        for item in self.point2fs.iter() {
+            write!(
+                f, "point2 \"{}\" [ {} ] ", item.name,
+                display_param_values!(&item.values))?;
+        }
+        for item in self.vector2fs.iter() {
+            write!(
+                f, "vector2 \"{}\" [ {} ] ", item.name,
+                display_param_values!(&item.values))?;
+        }
+        for item in self.point3fs.iter() {
+            write!(
+                f, "point3 \"{}\" [ {} ] ", item.name,
+                display_param_values!(&item.values))?;
+        }
+        for item in self.vector3fs.iter() {
+            write!(
+                f, "vector3 \"{}\" [ {} ] ", item.name,
+                display_param_values!(&item.values))?;
+        }
+        for item in self.normals.iter() {
+            write!(
+                f, "normals \"{}\" [ {} ] ", item.name,
+                display_param_values!(&item.values))?;
+        }
+        for item in self.strings.iter() {
+            write!(
+                f, "integer \"{}\" [ {} ] ", item.name,
+                item.values.iter()
+                    .map(|s| format!("\"{}\" ", s))
+                    .collect::<Vec<_>>()
+                    .join(""))?;
+        }
+        for item in self.textures.iter() {
+            write!(
+                f, "integer \"{}\" [ {} ] ", item.name,
+                item.values.iter()
+                    .map(|s| format!("\"{}\" ", s))
+                    .collect::<Vec<_>>()
+                    .join(""))?;
+        }
+        for item in self.spectra.iter() {
+            write!(
+                f, "integer \"{}\" [ {} ] ", item.name,
+                item.values.iter()
+                    .map(|s| {
+                        let rgb = s.to_rgb();
+                        format!("[ {} {} {} ] ", rgb[0], rgb[1], rgb[2])
+                    })
+                    .collect::<Vec<_>>()
+                    .join(""))?;
+        }
+
+        Ok(())
     }
 }
 
-pub fn print_items<T: Display>(ty: &str, indent: usize, items: &Vec<ParamSetItem<T>>) {
+pub fn print_items<T: Display>(ty: &str, indent: usize, items: &[ParamSetItem<T>]) {
     for item in items {
         let mut np = 0;
         let mut s = format!("\n{:indent$}\"{} {}\" [ ", "", ty, item.name, indent=indent+8);
@@ -356,16 +441,15 @@ pub fn print_items<T: Display>(ty: &str, indent: usize, items: &Vec<ParamSetItem
 
 // TextureParams Declarations
 pub struct TextureParams<'a> {
-    float_textures: &'a HashMap<String, Arc<TextureFloat>>,
-    spectrum_textures: &'a HashMap<String, Arc<TextureSpec>>,
-    geo_params: &'a ParamSet,
-    material_params: &'a ParamSet
+    float_textures      : &'a HashMap<String, Arc<TextureFloat>>,
+    spectrum_textures   : &'a HashMap<String, Arc<TextureSpec>>,
+    geo_params          : &'a ParamSet,
+    material_params     : &'a ParamSet
 }
 
 impl<'a> TextureParams<'a> {
     pub fn new(
-        geo_params: &'a ParamSet,
-        material_params: &'a ParamSet,
+        geo_params: &'a ParamSet, material_params: &'a ParamSet,
         float_textures: &'a HashMap<String, Arc<TextureFloat>>,
         spectrum_textures: &'a HashMap<String, Arc<TextureSpec>>) -> Self
     {
@@ -518,8 +602,8 @@ impl<'a> TextureParams<'a> {
     }
 
     fn report_unused_material_params<T>(
-        mtl: &Vec<ParamSetItem<T>>,
-        geom: &Vec<ParamSetItem<T>>) {
+        mtl: &[ParamSetItem<T>],
+        geom: &[ParamSetItem<T>]) {
         for param in mtl.iter() {
             if param.looked_up.get() { continue; }
 
