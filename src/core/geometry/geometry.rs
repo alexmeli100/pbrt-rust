@@ -1,5 +1,5 @@
 use crate::core::geometry::point::Point3f;
-use crate::core::geometry::vector::{Vector3f, Vector3};
+use crate::core::geometry::vector::{Vector3f};
 use crate::core::geometry::normal::Normal3f;
 use crate::core::pbrt::*;
 
