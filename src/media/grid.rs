@@ -5,8 +5,7 @@ use crate::core::transform::Transform;
 use crate::core::sampler::Sampler;
 use std::sync::Arc;
 use log::error;
-use crate::core::medium::Medium;
-use crate::core::sampler::Samplers;
+use crate::core::medium::{Medium, PhaseFunctions, HenyeyGreenstein, Mediums, MediumInterface};
 use crate::core::interaction::MediumInteraction;
 use crate::core::geometry::ray::Ray;
 use crate::core::geometry::point::{Point3f, Point3i};
@@ -21,6 +20,7 @@ pub fn init_stats() {
     ntr_steps_per_calls::init();
 }
 
+#[derive(Clone)]
 pub struct GridDensityMedium {
     sigma_a         : Spectrum,
     sigma_s         : Spectrum,
@@ -106,7 +106,7 @@ impl GridDensityMedium {
 }
 
 impl Medium for GridDensityMedium {
-    fn tr(&self, ray: &Ray, sampler: &mut Samplers) -> Spectrum {
+    fn tr<S: Sampler>(&self, ray: &Ray, sampler: &mut S) -> Spectrum {
         // TODO: ProfilePhase
         ntr_steps_per_calls::inc_den();
 
@@ -115,7 +115,7 @@ impl Medium for GridDensityMedium {
         );
 
         // Compute [tmin, tmax] interval of ray's overlap with medium bounds
-        let b = Bounds3f::from_points(Point3f::new(0.0, 0.0, 0.0), Point3f::new(1.0, 1.0, 1.0));
+        let b = Bounds3f::from_points(Default::default(), Point3f::new(1.0, 1.0, 1.0));
         let mut tmin = 0.0;
         let mut tmax = 0.0;
 
@@ -132,13 +132,13 @@ impl Medium for GridDensityMedium {
             if t >= tmax { break; }
 
             let density = self.density(&r.find_point(t));
-            tr *= 1.0 - (0.0 as Float).max(density * self.inv_max_density);
+            tr *= 1.0 - (density * self.inv_max_density).max(0.0);
 
             // When transmittance gets low, start applying Russian roulette to terminate sampling
             let rr_threshold = 0.1;
 
             if tr < rr_threshold {
-                let q = (0.05 as Float).max(1.0 - tr);
+                let q = (1.0 - tr).max(0.05);
 
                 if sampler.get_1d() < q { return Spectrum::new(0.0); }
                 tr /= 1.0 - q;
@@ -148,7 +148,36 @@ impl Medium for GridDensityMedium {
         Spectrum::new(tr)
     }
 
-    fn sample(&self, ray: &Ray, sampler: &mut Samplers, mi: &mut MediumInteraction) -> Spectrum {
-        unimplemented!()
+    fn sample<S: Sampler>(&self, ray: &Ray, sampler: &mut S, mi: &mut MediumInteraction) -> Spectrum {
+        // Todo: ProfilePhase
+        let r = Ray::new(
+            &ray.o, &ray.d.normalize(), ray.t_max * ray.d.length(),
+            0.0, None, None);
+        let rtr = self.w2m.transform_ray(&r);
+        // Compute [tmin, tmax] interval of ray's overlap with medium bounds
+        let b = Bounds3f::from_points(Default::default(), Point3f::new(1.0, 1.0, 1.0));
+        let mut tmin = 0.0;
+        let mut tmax = 0.0;
+        if !b.intersect_p(&rtr, &mut tmin, &mut tmax) { return Spectrum::new(1.0); }
+
+        // Perform ratio tracking to estimate the transmittance value
+        let mut t = tmin;
+
+        loop {
+            t -= (1.0 - sampler.get_1d()).ln() * self.inv_max_density / self.sigma_t;
+            if t >= tmax { break; }
+
+            if self.density(&rtr.find_point(t)) * self.inv_max_density > sampler.get_1d() {
+                // Populate mi with medium interaction information and return
+                let phase: Option<PhaseFunctions> = Some(HenyeyGreenstein::new(self.g).into());
+                let m: Option<Arc<Mediums>> = Some(Arc::new(self.clone().into()));
+                let minter = Some(MediumInterface::new(m));
+                *mi = MediumInteraction::new(&ray.find_point(t), &(-ray.d), ray.time, minter, phase);
+
+                return self.sigma_s / self.sigma_t;
+            }
+        }
+
+        Spectrum::new(1.0)
     }
 }
