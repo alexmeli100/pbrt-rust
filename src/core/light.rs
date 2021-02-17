@@ -1,7 +1,7 @@
 use enum_dispatch::enum_dispatch;
-use crate::core::interaction::{Interaction, Interactions, SurfaceInteraction};
+use crate::core::interaction::{Interaction, SurfaceInteraction, InteractionData};
 use crate::core::scene::Scene;
-use crate::core::sampler::Samplers;
+use crate::core::sampler::{Sampler};
 use crate::core::spectrum::Spectrum;
 use crate::core::primitive::Primitive;
 use crate::core::medium::Medium;
@@ -16,6 +16,7 @@ use crate::lights::spot::SpotLight;
 use crate::lights::goniometric::GonioPhotometricLight;
 use crate::lights::point::PointLight;
 use crate::lights::diffuse::DiffuseAreaLight;
+use crate::lights::infinite::InfiniteAreaLight;
 
 #[macro_export]
 macro_rules! init_light_data {
@@ -36,18 +37,24 @@ pub enum LightFlags {
     Infinite        = 8
 }
 
+#[inline]
+pub fn is_delta_light(flags: u8) -> bool {
+    (flags & LightFlags::DeltaPosition as u8) > 0 ||
+    (flags & LightFlags::DeltaDirection as u8) > 0
+}
+
 #[enum_dispatch]
 pub trait Light {
     fn power(&self, ) -> Spectrum;
 
-    fn preprocess(&mut self, _scene: &Scene){}
+    fn preprocess(&self, _scene: &Scene){}
 
-    fn le(&self, r: &Ray) -> Spectrum;
+    fn le(&self, _r: &Ray) -> Spectrum { Spectrum::new(0.0) }
 
-    fn pdf_li(&self, re: &Interactions, wi: &Vector3f) -> Float;
+    fn pdf_li(&self, re: &InteractionData, wi: &Vector3f) -> Float;
 
     fn sample_li(
-        &self, re: &Interactions, u: &Point2f, wi: &mut Vector3f,
+        &self, re: &InteractionData, u: &Point2f, wi: &mut Vector3f,
         pdf: &mut Float, vis: &mut VisibilityTester) -> Spectrum;
 
     fn sample_le(
@@ -59,18 +66,25 @@ pub trait Light {
         &self, ray: &Ray, nlight: &Normal3f,
         pdf_pos: &mut Float, pdf_dir: &mut Float);
 
+    fn nsamples(&self) -> usize;
+
+    fn flags(&self) -> u8;
+
+    fn l<I: Interaction>(&self, _intr: &I, _w: &Vector3f) -> Spectrum {
+        panic!("Not an Area Light")
+    }
 }
 
 #[enum_dispatch(Light)]
 pub enum Lights {
-    AreaLights,
-    SpotLight,
-    PointLight,
-    DistantLight,
-    ProjectionLight,
-    DiffuseAreaLight,
-    GonioPhotometricLight
-
+    AreaLights(AreaLights),
+    SpotLight(SpotLight),
+    PointLight(PointLight),
+    DistantLight(DistantLight),
+    InfiniteAreaLight(InfiniteAreaLight),
+    ProjectionLight(ProjectionLight),
+    DiffuseAreaLight(DiffuseAreaLight),
+    GonioPhotometricLight(GonioPhotometricLight)
 }
 
 #[enum_dispatch]
@@ -84,21 +98,22 @@ pub enum AreaLights {
     DiffuseAreaLight
 }
 
-pub struct VisibilityTester<'a, 'b> {
-    p0: Interactions<'a>,
-    p1: Interactions<'b>
+#[derive(Default)]
+pub struct VisibilityTester {
+    p0: InteractionData,
+    p1: InteractionData
 }
 
-impl<'a, 'b> VisibilityTester<'a, 'b> {
-    pub fn new(p0: Interactions<'a>, p1: Interactions<'b>) -> Self {
+impl VisibilityTester {
+    pub fn new(p0: InteractionData, p1: InteractionData) -> Self {
         Self { p0, p1 }
     }
 
-    pub fn p0(&self) -> &Interactions<'a> {
+    pub fn p0(&self) -> &InteractionData {
         &self.p0
     }
 
-    pub fn p1(&self) -> &Interactions<'b> {
+    pub fn p1(&self) -> &InteractionData {
         &self.p1
     }
 
@@ -107,7 +122,7 @@ impl<'a, 'b> VisibilityTester<'a, 'b> {
         !scene.intersect_p(&mut r)
     }
 
-    pub fn tr(&self, scene: &Scene, sampler: &mut Samplers) -> Spectrum {
+    pub fn tr<S: Sampler>(&self, scene: &Scene, sampler: &mut S) -> Spectrum {
         let mut ray = self.p0.spawn_rayto_interaction(&self.p1);
         let mut Tr = Spectrum::new(1.0);
 
