@@ -1,7 +1,7 @@
 use crate::core::memory::BlockedArray;
 use log::info;
 use lazy_static::lazy_static;
-use crate::core::pbrt::{Float, is_power_of2, round_up_pow2_32, mod_, clamp, INFINITY, log2_int, lerp};
+use crate::core::pbrt::{Float, is_power_of2, round_up_pow2_32, mod_, clamp, INFINITY, lerp};
 use crate::core::geometry::point::{Point2i, Point2f};
 use crate::core::geometry::vector::Vector2f;
 use ndarray::prelude::*;
@@ -24,7 +24,7 @@ macro_rules! mipmap {
     }
 }
 
-fn init_stats() {
+pub fn init_stats() {
     newa_lookups::init();
     ntrilerp_lookups::init();
     mipmap_memory::init();
@@ -37,7 +37,7 @@ lazy_static! {
 }
 
 fn initialize_weightlut() -> [Float; WEIGHT_LUT_SIZE] {
-    let mut wl= [0.0 as Float; WEIGHT_LUT_SIZE];
+    let mut wl= [0 as Float; WEIGHT_LUT_SIZE];
 
     for (i, w) in wl.iter_mut().enumerate() {
         let alpha = 2.0;
@@ -119,8 +119,7 @@ where T: num::Zero + Clone + Copy + Send + Sync + Mul<Float, Output=T> + AddAssi
             resampled
                 .axis_iter_mut(Axis(1))
                 .into_par_iter()
-                .enumerate()
-                .for_each(|(s, mut col)| {
+                .for_each(|mut col| {
                     let mut work_data = vec![T::zero(); res_pow2[1] as usize];
 
                     for t in 0..res_pow2[1] as usize {
@@ -172,7 +171,7 @@ where T: num::Zero + Clone + Copy + Send + Sync + Mul<Float, Output=T> + AddAssi
             // Initialize ith MIPMap level from i-1st level
             let sres = std::cmp::max(1, mipmap.pyramid[i - 1].ures() / 2);
             let tres = std::cmp::max(1, mipmap.pyramid[i - 1].vres() / 2);
-            let mut d = Array2::zeros((sres, tres));
+            let mut d = Array2::zeros((tres, sres));
 
             // Filter four texels from finer level of pyramid
             Zip::indexed(&mut d).par_apply(|(t, s), p| {
@@ -254,15 +253,13 @@ where T: num::Zero + Clone + Copy + Send + Sync + Mul<Float, Output=T> + AddAssi
         if minorl == 0.0 { return self.triangle(0, st); }
 
         // Choose level of detail for EWA lookup and perform EWA filtering
-        let lod = (0.0 as Float).max(self.levels() as Float - 1.0 + minorl.log2());
+        let lod = (self.levels() as Float - 1.0 + minorl.log2()).max(0.0);
         let ilod = lod.floor() as usize;
 
         lerp(
             lod - ilod as Float,
             self.ewa(ilod, *st, dst0, dst1),
-            self.ewa(ilod + 1, *st, dst0, dst1)
-        )
-
+            self.ewa(ilod + 1, *st, dst0, dst1))
     }
 
     pub fn levels(&self) -> usize {
