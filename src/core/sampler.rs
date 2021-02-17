@@ -1,19 +1,30 @@
 use enum_dispatch::enum_dispatch;
 use crate::core::geometry::point::{Point2i, Point2f};
-use crate::core::rng::RNG;
 use crate::core::pbrt::Float;
 use crate::samplers::stratified::StratifiedSampler;
 use crate::samplers::halton::HaltonSampler;
 use crate::core::camera::CameraSample;
+use crate::samplers::zerotwosequence::ZeroTwoSequenceSampler;
+use crate::samplers::maxmin::MaxMinDistSampler;
+use crate::samplers::sobol::SobolSampler;
+use crate::samplers::random::RandomSampler;
+
+pub const ARRAY_START_DIM: usize = 5;
 
 #[enum_dispatch(Sampler)]
 pub enum Samplers {
+    SobolSampler,
+    RandomSampler,
     StratifiedSampler,
-    HaltonSampler
+    HaltonSampler,
+    MaxMinDistSampler,
+    ZeroTwoSequenceSampler
 }
 
 #[enum_dispatch]
 pub trait Sampler {
+    fn samples_per_pixel(&self) -> u64;
+
     fn start_pixel(&mut self, p: &Point2i);
     fn get_1d(&mut self) -> Float;
     fn get_2d(&mut self) -> Point2f;
@@ -32,7 +43,7 @@ pub trait Sampler {
 
 pub trait GlobalSampler: Sampler {
     fn get_index_for_sample(&self, sample_num: u64) -> u64;
-    fn sample_dimension(&self, index: u64, dimention: usize) -> Float;
+    fn sample_dimension(&self, index: u64, dimension: usize) -> Float;
 }
 
 #[macro_export]
@@ -40,6 +51,13 @@ macro_rules! sampler_new {
     ($samples_per_pixel:expr, $s:ident) => {{
         $s.samples_per_pixel = $samples_per_pixel
     }}
+}
+
+#[macro_export]
+macro_rules! get_sampler_data {
+    () => {
+        fn samples_per_pixel(&self) -> u64 { self.samples_per_pixel }
+    }
 }
 
 #[macro_export]
@@ -83,7 +101,6 @@ macro_rules! current_sample_number_default {
     }
 }
 
-#[macro_export]
 
 #[macro_export]
 macro_rules! request_1d_array_default {
@@ -91,7 +108,7 @@ macro_rules! request_1d_array_default {
         fn request_1d_array(&mut self, n: usize) {
             assert!(self.round_count(n) > n);
             self.samples_1d_array_sizes.push(n);
-            self.sample_array_1d.push(Vec::with_capacity(n * self.samples_per_pixel as usize));
+            self.sample_array_1d.push(vec![0.0; n * self.samples_per_pixel as usize]);
         }
     }
 }
@@ -102,7 +119,7 @@ macro_rules! request_2d_array_default {
         fn request_2d_array(&mut self, n: usize) {
             assert!(self.round_count(n) > n);
             self.samples_2d_array_sizes.push(n);
-            self.sample_array_2d.push(Vec::with_capacity(n * self.samples_per_pixel as usize));
+            self.sample_array_2d.push(vec![Default::default(); n * self.samples_per_pixel as usize]);
         }
     }
 }
@@ -167,11 +184,11 @@ macro_rules! get_camera_sample_default {
 #[macro_export]
 macro_rules! pixel_sampler_new {
     ($samples_per_pixel:expr, $sample_dims:ident, $p:ident) =>{{
-        sampler_new!($samples_per_pixel, $p);
+        crate::sampler_new!($samples_per_pixel, $p);
 
         for _ in 0..$sample_dims {
-            $p.samples_1d.push(Vec::with_capacity($samples_per_pixel as usize));
-            $p.samples_2d.push(Vec::with_capacity($samples_per_pixel as usize));
+            $p.samples_1d.push(vec![0.0; $samples_per_pixel as usize]);
+            $p.samples_2d.push(vec![Default::default(); $samples_per_pixel as usize]);
         }
     }}
 }
@@ -182,7 +199,7 @@ macro_rules! pixel_start_next_sample {
         fn start_next_sample(&mut self) -> bool {
             self.current_1d_dimension = 0;
             self.current_2d_dimension = 0;
-            start_next_sample_default!(self)
+            crate::start_next_sample_default!(self)
         }
     }
 }
@@ -194,7 +211,7 @@ macro_rules! pixel_set_sample_number {
             self.current_1d_dimension = 0;
             self.current_2d_dimension = 0;
 
-            set_sample_number_default!(self, sample_num)
+            crate::set_sample_number_default!(self, sample_num)
         }
     }
 }
@@ -254,7 +271,9 @@ macro_rules! global_start_pixel {
             self.interval_sample_index = self.get_index_for_sample(0);
 
             // Compute arrayEndDim for dimensions used for array samples
-            self.array_end_dim = ARRAY_START_DIM + self.sample_array_1d.len() + 2 * self.sample_array_2d.len();
+            self.array_end_dim =
+                crate::core::sampler::ARRAY_START_DIM +
+                self.sample_array_1d.len() + 2 * self.sample_array_2d.len();
 
             // Compute 1D array samples for GlobalSampler
             for i in 0..self.samples_1d_array_sizes.len() {
@@ -262,19 +281,20 @@ macro_rules! global_start_pixel {
 
                 for j in 0..nsamples {
                     let index = self.get_index_for_sample(j);
-                    self.sample_array_1d[i][j as usize] = self.sample_dimension(index, ARRAY_START_DIM + i);
+                    self.sample_array_1d[i][j as usize] =
+                        self.sample_dimension(index, crate::core::sampler::ARRAY_START_DIM + i);
                 }
             }
 
             // Compute 2D array samples for GlobalSampler
-            let mut dim = ARRAY_START_DIM + self.samples_1d_array_sizes.len();
+            let mut dim = crate::core::sampler::ARRAY_START_DIM + self.samples_1d_array_sizes.len();
 
             for i in 0..self.samples_2d_array_sizes.len() {
                 let nsamples = self.samples_2d_array_sizes[i] as u64 * self.samples_per_pixel;
                 for j in 0..nsamples {
                     let idx = self.get_index_for_sample(j);
-                    self.sample_array_2d[i][j as usize].x = self.sample_dimension(idx, dim);
                     self.sample_array_2d[i][j as usize].y = self.sample_dimension(idx, dim + 1);
+                    self.sample_array_2d[i][j as usize].x = self.sample_dimension(idx, dim);
                 }
 
                 dim += 2;
@@ -291,7 +311,7 @@ macro_rules! global_set_sample_number {
         fn set_sample_number(&mut self, sample_num: u64) -> bool {
             self.dimension = 0;
             self.interval_sample_index = self.get_index_for_sample(sample_num);
-            set_sample_number_default!(self, sample_num)
+            crate::set_sample_number_default!(self, sample_num)
         }
     }
 }
@@ -300,7 +320,7 @@ macro_rules! global_set_sample_number {
 macro_rules! global_get_1d {
     () => {
         fn get_1d(&mut self) -> Float {
-            if self.dimension >= ARRAY_START_DIM && self.dimension < self.array_end_dim {
+            if self.dimension >= crate::core::sampler::ARRAY_START_DIM && self.dimension < self.array_end_dim {
                 self.dimension = self.array_end_dim;
             }
 
@@ -316,14 +336,14 @@ macro_rules! global_get_1d {
 macro_rules! global_get_2d {
     () => {
         fn get_2d(&mut self) -> Point2f {
-            if self.dimension + 1 >= ARRAY_START_DIM && self.dimension < self.array_end_dim {
+            if self.dimension + 1 >= crate::core::sampler::ARRAY_START_DIM && self.dimension < self.array_end_dim {
                 self.dimension = self.array_end_dim;
             }
 
-            let p = Point2f::new(
-                self.sample_dimension(self.interval_sample_index, self.dimension),
-                self.sample_dimension(self.interval_sample_index, self.dimension + 1)
-            );
+            let y = self.sample_dimension(self.interval_sample_index, self.dimension + 1);
+            let x = self.sample_dimension(self.interval_sample_index, self.dimension);
+
+            let p = Point2f::new(x, y);
 
             self.dimension += 2;
 
