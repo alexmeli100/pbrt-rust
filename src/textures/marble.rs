@@ -65,7 +65,7 @@ impl<T: From<Spectrum>> Texture<T> for MarbleTexture {
     }
 }
 
-pub fn create_marble_float(t2w: &Transform, tp: &mut TextureParams) -> Option<Arc<TextureFloat>> {
+pub fn create_marble_float(_t2w: &Transform, _tp: &mut TextureParams) -> Option<Arc<TextureFloat>> {
     None
 }
 
