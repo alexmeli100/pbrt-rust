@@ -2,17 +2,21 @@ use crate::core::mipmap::MIPMap;
 use crate::core::spectrum::{RGBSpectrum, Spectrum, SpectrumType};
 use crate::core::geometry::point::{Point3f, Point2i, Point2f};
 use crate::core::transform::Transform;
-use crate::core::pbrt::{Float, PI};
+use crate::core::pbrt::{Float, PI, INFINITY};
 use crate::core::geometry::bounds::Bounds2f;
 use crate::core::medium::MediumInterface;
 use crate::init_light_data;
 use crate::mipmap;
-use crate::core::light::{LightFlags, Light, VisibilityTester};
+use crate::core::light::{LightFlags, Light, VisibilityTester, Lights};
 use crate::core::imageio::read_image;
 use crate::core::geometry::vector::Vector3f;
 use crate::core::geometry::ray::Ray;
-use crate::core::interaction::{Interactions, SurfaceInteraction, Interaction};
-use crate::core::geometry::normal::Normal3f;
+use crate::core::interaction::{InteractionData};
+use crate::core::geometry::normal::{Normal3f};
+use crate::core::paramset::ParamSet;
+use std::sync::Arc;
+use crate::core::sampling::{uniform_sample_cone, uniform_cone_pdf};
+use crate::core::reflection::cos_theta;
 
 #[derive(Default)]
 pub struct ProjectionLight {
@@ -107,48 +111,68 @@ impl Light for ProjectionLight {
         s * self.I * 2.0 * PI * (1.0 - self.cos_totalwidth)
     }
 
-    fn le(&self, r: &Ray) -> Spectrum {
-        unimplemented!()
-    }
-
-    fn pdf_li(&self, re: &Interactions, wi: &Vector3f) -> Float {
+    fn pdf_li(&self, _re: &InteractionData, _wi: &Vector3f) -> Float {
         0.0
     }
 
     fn sample_li(
-        &self, re: &Interactions, u: &Point2f, wi: &mut Vector3f,
+        &self, re: &InteractionData, _u: &Point2f, wi: &mut Vector3f,
         pdf: &mut f32, vis: &mut VisibilityTester) -> Spectrum {
         // TODO: ProfilePhase
-        *wi = (self.plight - re.p()).normalize();
+        *wi = (self.plight - re.p).normalize();
         *pdf = 1.0;
-        let s1 = SurfaceInteraction {
-            p       : re.p(),
-            n       : re.n(),
-            time    : re.time(),
-            p_error : re.p_error(),
-            wo      : re.wo(),
-            ..Default::default()
 
-        };
-        let s2 = SurfaceInteraction {
+        let s2 = InteractionData {
             p               : self.plight,
-            time            : re.time(),
+            time            : re.time,
             medium_interface: Some(self.medium_interface.clone()),
             ..Default::default()
         };
 
-        *vis = VisibilityTester::new(s1.into(), s2.into());
+        *vis = VisibilityTester::new(re.clone(), s2);
 
-        self.I * self.projection(&(-*wi)) / self.plight.distance_squared(&re.p())
+        self.I * self.projection(&(-*wi)) / self.plight.distance_squared(&re.p)
     }
 
     fn sample_le(
-        &self, u1: &Point2f, u2: &Point2f, time: f32, ray: &mut Ray,
-        nlight: &mut Normal3f, pdf_pos: &mut f32, pdf_dir: &mut f32) -> Spectrum {
-        unimplemented!()
+        &self, u1: &Point2f, _u2: &Point2f, time: Float, ray: &mut Ray,
+        nlight: &mut Normal3f, pdf_pos: &mut Float, pdf_dir: &mut Float) -> Spectrum {
+        // TODO: ProfilePhase
+        let v = uniform_sample_cone(u1, self.cos_totalwidth);
+        *ray = Ray::new(
+            &self.plight, &self.light_to_world.transform_vector(&v), INFINITY,
+            time, self.medium_interface.inside.clone(), None);
+        *nlight = Normal3f::from(ray.d);
+        *pdf_pos = 1.0;
+        *pdf_dir = uniform_cone_pdf(self.cos_totalwidth);
+
+        self.I * self.projection(&ray.d)
     }
 
-    fn pdf_le(&self, ray: &Ray, nlight: &Normal3f, pdf_pos: &mut Float, pdf_dir: &mut f32) {
-        unimplemented!()
+    fn pdf_le(&self, ray: &Ray, _nlight: &Normal3f, pdf_pos: &mut Float, pdf_dir: &mut Float) {
+        // TODO: ProfilePhase
+        *pdf_pos = 0.0;
+        let v = self.world_to_light.transform_vector(&ray.d);
+        *pdf_dir = if cos_theta(&v) >= self.cos_totalwidth {
+            uniform_cone_pdf(self.cos_totalwidth)
+        } else {
+            0.0
+        };
     }
+
+    fn nsamples(&self) -> usize { self.nsamples }
+
+    fn flags(&self) -> u8 {
+        self.flags
+    }
+}
+
+pub fn create_projectionlight(l2w: &Transform, mi: MediumInterface, params: &ParamSet) -> Option<Arc<Lights>> {
+    let I = params.find_one_spectrum("I", Spectrum::new(1.0));
+    let scale = params.find_one_spectrum("scale", Spectrum::new(1.0));
+    let fov = params.find_one_float("fov", 45.0);
+    let texname = params.find_one_filename("mapname", "");
+    let l = ProjectionLight::new(l2w, mi, &(I * scale), &texname, fov);
+
+    Some(Arc::new(l.into()))
 }
