@@ -1,20 +1,21 @@
-use std::ops::{Sub, Add, Mul, Div, BitAnd};
+use std::ops::{Sub, Add, Mul, BitAnd};
 
-use crate::core::efloat::EFloat;
-use num::{One, Zero, Num, Bounded};
+use num::{One, Zero};
 use num::traits::Pow;
+use std::path::PathBuf;
 
 pub type Float = f32;
 
-pub const PI: Float = 3.14159265358979323846;
-pub const PI_OVER2: Float = 1.57079632679489661923;
-pub const PI_OVER4: Float = 0.78539816339744830961;
-pub const INV_PI: Float = 0.31830988618379067154;
-pub const INV2_PI: Float = 0.15915494309189533577;
-pub const INV4_PI: Float = 0.07957747154594766788;
-pub const INFINITY: Float = std::f32::INFINITY;
-pub const SHADOW_EPSILON: Float = 0.0001;
-pub const MACHINE_EPSILON: Float = std::f32::EPSILON * 0.5;
+pub const PI                : Float = 3.14159265358979323846;
+pub const PI_OVER2          : Float = 1.57079632679489661923;
+pub const PI_OVER4          : Float = 0.78539816339744830961;
+pub const INV_PI            : Float = 0.31830988618379067154;
+pub const INV2_PI           : Float = 0.15915494309189533577;
+pub const INV4_PI           : Float = 0.07957747154594766788;
+pub const INFINITY          : Float = std::f32::INFINITY;
+pub const SHADOW_EPSILON    : Float = 0.0001;
+pub const MACHINE_EPSILON   : Float = std::f32::EPSILON * 0.5;
+pub const SQRT2             : Float = 1.41421356237309504880;
 
 #[derive(Default, Clone)]
 pub struct Options {
@@ -22,7 +23,7 @@ pub struct Options {
     pub quiet           : bool,
     pub cat             : bool,
     pub to_ply          : bool,
-    pub image_file      : String,
+    pub image_file      : PathBuf,
     pub integrator_name : String,
     pub crop_window     : [[Float; 2]; 2]
 }
@@ -111,12 +112,33 @@ pub fn lerp<T, S>(t: S, x: T, y: T) -> T
     x * (one - t) + y * t
 }
 
-#[inline(always)]
-pub fn radians(deg: Float) -> Float {
-    (std::f32::consts::PI / 180.0) as Float * deg
+#[inline]
+pub fn quadratic(a: Float, b: Float, c: Float, t0: &mut Float, t1: &mut Float) -> bool {
+    // Find quadratic discriminant
+    let discrim = b as f64 * b as f64 - 4.0 * a as f64 * c as f64;
+    if discrim < 0.0 { return false; }
+    let root_discrim = discrim.sqrt();
+
+    // Compute quadratic t values
+    let q = if b < 0.0 {
+        -0.5 * (b as f64 - root_discrim)
+    } else {
+        -0.5 * (b as f64 + root_discrim)
+    };
+
+    *t0 = (q / a as f64) as Float;
+    *t1 = (c as f64 / q) as Float;
+    if *t0 > *t1 { std::mem::swap(t0, t1); }
+
+    true
 }
 
-pub fn clamp<T>(val: T, high: T, low: T) -> T
+#[inline(always)]
+pub fn radians(deg: Float) -> Float {
+    (PI / 180.0) as Float * deg
+}
+
+pub fn clamp<T>(val: T, low: T, high: T) -> T
 where T: PartialOrd
 {
     if val < low {
@@ -154,15 +176,21 @@ pub fn gamma(n: isize) -> Float {
     (n as Float * MACHINE_EPSILON) / (1.0 - n as Float * MACHINE_EPSILON)
 }
 
+pub fn gamma_correct(value: Float) -> Float {
+    if value <= 0.0031308 {
+        return 12.92 * value;
+    }
+
+    1.055 * value.pow(1.0 / 2.4) - 0.055
+}
+
 pub fn inverse_gamma_correct(value: Float) -> Float {
     if value <= 0.04045 { return value * 1.0 / 12.92 }
 
     ((value + 0.055) * 1.0 / 1.055).pow(2.4)
 }
 
-pub fn quadratic(a: EFloat, b: EFloat, c: EFloat, t0: &mut EFloat, t1: &mut EFloat) -> bool {
-    unimplemented!();
-}
+
 
 pub fn mod_<T>(a: T, b: T) -> T
 where
@@ -226,7 +254,7 @@ pub fn erf(mut x: Float) -> Float {
 }
 
 pub fn erf_inv(mut x: Float) -> Float {
-    let mut p = 0.0;
+    let mut p: Float;
     x = clamp(x, -0.99999, 0.99999);
     let mut w = -((1.0 - x) * (1.0 + x)).ln();
 
