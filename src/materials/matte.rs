@@ -29,7 +29,9 @@ impl Material for MatteMaterial {
         &self, si: &mut SurfaceInteraction<'b>, arena: &Member<'b>,
         _mat: Option<Arc<Materials>>, _mode: TransportMode, _allow_multiple_lobes: bool) {
         // Perform bump mapping with bumpMap if present
-        if self.bump_map.is_some() { bump(self.bump_map.as_ref().unwrap(), si); }
+        if let Some(ref map) = self.bump_map {
+            bump(map, si);
+        }
 
         // Evaluate textures for MatteMaterial and allocate BRDF
         let bsdf = arena.alloc(BSDF::new(si, 1.0));

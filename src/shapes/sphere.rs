@@ -59,7 +59,7 @@ impl Shape for Sphere {
     fn intersect(
         &self, r: &Ray, t_hit: &mut f32,
         isect: &mut SurfaceInteraction,
-        _test_aphatexture: bool, s: Option<Arc<Shapes>>) -> bool {
+        _test_aphatexture: bool, _s: Option<Arc<Shapes>>) -> bool {
         let mut phi;
         let mut p_hit;
 
@@ -164,9 +164,9 @@ impl Shape for Sphere {
         let dpdv = Vector3f::new(p_hit.z * cos_phi, p_hit.z * sin_phi, -self.radius * theta.sin()) * (self.theta_max - self.theta_min);
 
         // compute sphere dndu and dndv
-        let d2pduu =  Vector3f::new(p_hit.x, p_hit.y, 0.0) * self.phi_max * self.phi_max;
+        let d2pduu =  Vector3f::new(p_hit.x, p_hit.y, 0.0) * -self.phi_max * self.phi_max;
         let d2pduv = Vector3f::new(-sin_phi, cos_phi, 0.0) * (self.theta_max - self.theta_min) * p_hit.z * self.phi_max;
-        let d2pdvv = Vector3f::new(p_hit.x, p_hit.y, p_hit.z) * (self.theta_max - self.theta_min) * (self.theta_max - self.theta_min);
+        let d2pdvv = Vector3f::new(p_hit.x, p_hit.y, p_hit.z) * -(self.theta_max - self.theta_min) * (self.theta_max - self.theta_min);
 
         // compute coefficeints for fundamental forms
         let E = dpdu.dot(&dpdu);
@@ -179,8 +179,8 @@ impl Shape for Sphere {
 
         // compute dndu and dndv from fundamental form coefficents
         let inv_EGF2 = 1.0 / (E * G - F * F);
-        let dndu = Normal3f::from(dpdu * inv_EGF2 * (f * F - e * G) + dpdv * inv_EGF2 * (e * F - f * E));
-        let dndv = Normal3f::from(dpdu * inv_EGF2 * (g * F - f * G) + dpdv * inv_EGF2 * (f * F - g * E));
+        let dndu = Normal3f::from(dpdu * (f * F - e * G) * inv_EGF2 + dpdv * (e * F - f * E) * inv_EGF2);
+        let dndv = Normal3f::from(dpdu * (g * F - f * G) * inv_EGF2 + dpdv * (f * F - g * E) * inv_EGF2);
 
         // compute error bounds for sphere intersection
         let p_error = Vector3f::from(p_hit).abs() * gamma(5);
@@ -188,10 +188,10 @@ impl Shape for Sphere {
         // Initialize SurfaceInteraction from parametric information
         //println!("{:?}", Normal3f::from(dpdu.cross(&dpdv).normalize()));
 
-        let s = SurfaceInteraction::new(
+        let mut s = SurfaceInteraction::new(
             &p_hit, &p_error, &Point2f::new(u, v), &-ray.d,
-            &dpdu, &dpdv, &dndu, &dndv, ray.time, s);
-        *isect = self.object_to_world.transform_surface_interaction(&s);
+            &dpdu, &dpdv, &dndu, &dndv, ray.time, None);
+        *isect = self.object_to_world.transform_surface_interaction(&mut s);
 
         *t_hit = t_shape_hit.into();
         true

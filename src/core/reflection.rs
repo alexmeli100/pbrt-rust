@@ -2,7 +2,7 @@
 use enum_dispatch::enum_dispatch;
 use std::fmt::{Display, Result, Formatter};
 use std::path::Path;
-use log::{error, info};
+use log::{error, debug};
 use byteorder::{ReadBytesExt, LittleEndian};
 use crate::core::geometry::vector::{Vector3f};
 use crate::core::pbrt::{Float, clamp, INV_PI, PI, radians, INFINITY};
@@ -30,19 +30,19 @@ pub fn fr_dielectric(mut cos_thetai: Float, mut etai: Float, mut etat: Float) ->
     cos_thetai = clamp(cos_thetai, -1.0, 1.0);
 
     // Potentially swap indices of refraction
-
-    if !(cos_thetai >= 0.0) {
+    let entering = cos_thetai > 0.0;
+    if !entering {
         std::mem::swap(&mut etai, &mut etat);
         cos_thetai = cos_thetai.abs();
     }
 
     // Compute cosThetaT using snell's law
-    let sin_thetai = (1.0 - cos_thetai * cos_thetai).max(0.0);
+    let sin_thetai = ((1.0 - cos_thetai * cos_thetai).max(0.0)).sqrt();
     let sin_thetat = etai / etat * sin_thetai;
 
     // Handle total internal reflection
     if sin_thetat >= 1.0 { return 1.0; }
-    let cos_thetat = (1.0 - sin_thetat * sin_thetat).max(0.0);
+    let cos_thetat = ((1.0 - sin_thetat * sin_thetat).max(0.0)).sqrt();
     let r_parl = ((etat * cos_thetai) - (etai * cos_thetat)) /
                  ((etat * cos_thetai) + (etai * cos_thetat));
     let r_perp = ((etai * cos_thetai) - (etat * cos_thetat)) /
@@ -160,13 +160,13 @@ pub fn reflect(wo: &Vector3f, n: &Vector3f) -> Vector3f {
 pub fn refract(wi: &Vector3f, n: &Normal3f, eta: Float, wt: &mut Vector3f) -> bool {
     // Compute costheta using Snell's law
     let cos_thetai = n.dot_vec(wi);
-    let sin_thetai = (1.0 * cos_thetai * cos_thetai).max(0.0);
-    let sin_thetat = eta * eta * sin_thetai;
+    let sin2_thetai = (1.0 - cos_thetai * cos_thetai).max(0.0);
+    let sin2_thetat = eta * eta * sin2_thetai;
 
     // Handle internal reflection for transmission
-    if sin_thetat >= 1.0 { return false; }
+    if sin2_thetat >= 1.0 { return false; }
 
-    let cos_thetat = (1.0 - sin_thetat).sqrt();
+    let cos_thetat = (1.0 - sin2_thetat).sqrt();
     *wt = Vector3f::from(*n) * (eta * cos_thetai - cos_thetat) + -*wi * eta;
 
     true
@@ -186,11 +186,7 @@ pub enum BxDFType {
     Diffuse         = 1 << 2,
     Glossy          = 1 << 3,
     Specular        = 1 << 4,
-    All = BxDFType::Diffuse as u8 |
-          BxDFType::Glossy as u8 |
-          BxDFType::Specular as u8 |
-          BxDFType::Reflection as u8 |
-          BxDFType::Transmission as u8
+    All             = 31
 }
 
 #[derive(Default)]
@@ -516,8 +512,8 @@ impl<'a> BxDF for ScaledBxDF<'a> {
         self.scale * self.bxdf.rho2(nsamples, samples1, samples2)
     }
 
-    fn pdf(&self, _wo: &Vector3f, _wi: &Vector3f) -> f32 {
-        unimplemented!()
+    fn pdf(&self, wo: &Vector3f, wi: &Vector3f) -> f32 {
+        self.bxdf.pdf(wo, wi)
     }
 }
 
@@ -789,8 +785,12 @@ impl BxDF for FresnelSpecular {
         }
     }
 
-    fn pdf(&self, _wo: &Vector3f, _wi: &Vector3f) -> Float {
-        0.0
+    fn pdf(&self, wo: &Vector3f, wi: &Vector3f) -> Float {
+        if same_hemisphere(wo, wi) {
+            abs_cos_theta(wi) * INV_PI
+        } else {
+            0.0
+        }
     }
 }
 
@@ -938,7 +938,7 @@ impl BxDF for OrenNayar {
             let sin_phio = sin_phi(wo);
             let cos_phio = cos_phi(wo);
             let dcos = cos_phii * cos_phio + sin_phii * sin_phio;
-            max_cos = (0.0 as Float).max(dcos)
+            max_cos = (dcos).max(0.0)
         }
 
         // Compute sine and tangent terms of Oren-Nayar model
@@ -1301,7 +1301,7 @@ impl BxDF for FourierBSDF {
         //println!("{:?}", ak);
 
         // Evaluete Fourier expansion for angle phi
-        let Y = (0.0 as Float).max(fourier(&ak, 0, nmax, cos_phi));
+        let Y = (fourier(&ak, 0, nmax, cos_phi)).max(0.0);
         let mut scale = if mui != 0.0 {
             1.0 / mui.abs()
         } else {
@@ -1562,7 +1562,7 @@ impl<'a> BSDF<'a> {
             .filter(|b|
                 b.matches_flags(f) &&
                     ((reflect && is_reflection(b.get_type())) ||
-                    (!reflect && (is_transmission(b.get_type())))))
+                    (!reflect && is_transmission(b.get_type()))))
             .map(|b| b.f(&wo, &wi))
             .fold(Spectrum::new(0.0), |b1, b2| b1 + b2)
     }
@@ -1585,7 +1585,7 @@ impl<'a> BSDF<'a> {
 
         // Get BxDF pointer for chosen compoent
         let mut bxdf: Option<&BxDFs> = None;
-        let mut count = comp;
+        let mut count = comp as isize;
         let mut idx = 0;
 
         for i in 0..self.n_bxdfs {
@@ -1603,7 +1603,7 @@ impl<'a> BSDF<'a> {
 
         assert!(bxdf.is_some());
         let b = bxdf.unwrap();
-        info!("BSDF::sample_f chose comp = {} / matching = {}, bxdf: {}",
+        debug!("BSDF::sample_f chose comp = {} / matching = {}, bxdf: {}",
               comp, matchingcomps, b);
 
         // Remap BxDF sample u to [0, 1)^2
@@ -1621,12 +1621,13 @@ impl<'a> BSDF<'a> {
 
 
         let mut f = b.sample_f(&wo, &mut wi, &uremapped, pdf, sampled_type);
-        info!(
+        debug!(
             "For wo = {}, sampled f = {}, pdf = {}, ratio = {}, wi = {}" ,
             wo, f, *pdf, (if *pdf > 0.0 { f / *pdf } else { Spectrum::new(0.0) }), wi);
 
         if *pdf == 0.0 {
             *sampled_type = 0;
+            return Spectrum::new(0.0);
         }
 
         *wiw = self.local_to_world(&wi);
@@ -1650,13 +1651,13 @@ impl<'a> BSDF<'a> {
             for i in 0..self.n_bxdfs {
                 if self.bxdfs[i].matches_flags(ty) &&
                     ((reflect && (self.bxdfs[i].get_type() & BxDFType::Reflection as u8 != 0)) ||
-                     (reflect && (self.bxdfs[i].get_type() & BxDFType::Transmission as u8 != 0))) {
+                     (!reflect && (self.bxdfs[i].get_type() & BxDFType::Transmission as u8 != 0))) {
                     f += self.bxdfs[i].f(&wo, &wi);
                 }
             }
         }
 
-        info!(
+        debug!(
             "Overall f = {}, pdf = {}, ratio = {}",
             f, *pdf, (if *pdf > 0.0 { f / *pdf } else { Spectrum::new(0.0) }));
 

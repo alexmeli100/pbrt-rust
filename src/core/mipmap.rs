@@ -60,12 +60,12 @@ pub struct ResampleWeight {
 pub struct MIPMap<T>
 where T: num::Zero + Clone + Copy + Send + Sync
 {
-    pyramid         : Vec<BlockedArray<T>>,
-    do_trilinear    : bool,
-    max_anisotropy  : Float,
-    wrap            : ImageWrap,
-    resolution      : Point2i,
-    black           : T
+    pub pyramid         : Vec<BlockedArray<T>>,
+    pub do_trilinear    : bool,
+    pub max_anisotropy  : Float,
+    pub wrap            : ImageWrap,
+    pub resolution      : Point2i,
+    pub black           : T
 }
 
 
@@ -180,7 +180,7 @@ where T: num::Zero + Clone + Copy + Send + Sync + Mul<Float, Output=T> + AddAssi
                     (*mipmap.texel(i - 1, 2 * si, 2 * ti) +
                      *mipmap.texel(i - 1, 2 * si + 1, 2 * ti) +
                      *mipmap.texel(i - 1, 2 * si, 2 * ti + 1) +
-                     *mipmap.texel(i - 1, 2 * si + 1, 2 * ti + 1 + 1)) *
+                     *mipmap.texel(i - 1, 2 * si + 1, 2 * ti + 1)) *
                     0.25;
             });
 
@@ -329,6 +329,8 @@ where T: num::Zero + Clone + Copy + Send + Sync + Mul<Float, Output=T> + AddAssi
 
     fn ewa(&self, level: usize, mut st: Point2f,
            mut dst0: Vector2f, mut dst1: Vector2f) -> T {
+        if level >= self.levels() { return *self.texel(self.levels() - 1, 0, 0) }
+
         // Convert ellipse coefficients to bound EWA filter region
         st.x = st.x * self.pyramid[level].ures() as Float - 0.5;
         st.y = st.y * self.pyramid[level].vres() as Float - 0.5;

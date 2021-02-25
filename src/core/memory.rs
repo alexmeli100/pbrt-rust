@@ -2,6 +2,7 @@ use std::ops::{Index, IndexMut};
 
 pub type BlockedArray<T> = BlockedArrayX<T, 2>;
 
+#[derive(Debug)]
 pub struct BlockedArrayX<T, const LogBlockSize: usize> {
     data    : Vec<T>,
     ures    : usize,
@@ -24,7 +25,7 @@ impl<T: num::Zero + Copy, const LogBlockSize: usize> BlockedArrayX<T, {LogBlockS
 
         arr.ublocks = rures >> LogBlockSize;
 
-        let d = vec![T::zero(); rures * rvres];
+        arr.data = vec![T::zero(); rures * rvres];
 
         if let Some(ref block) = data {
             for v in 0..vres {
@@ -34,8 +35,6 @@ impl<T: num::Zero + Copy, const LogBlockSize: usize> BlockedArrayX<T, {LogBlockS
             }
         }
 
-        arr.data = d;
-
         arr
     }
 
@@ -44,9 +43,7 @@ impl<T: num::Zero + Copy, const LogBlockSize: usize> BlockedArrayX<T, {LogBlockS
     }
 
 
-    pub const fn block_size(&self) -> usize {
-        LogBlockSize
-    }
+    pub const fn block_size(&self) -> usize { 1 << LogBlockSize }
 
     pub fn block(&self, a: usize) -> usize {
         a >> LogBlockSize

@@ -4,7 +4,7 @@ use num::{Zero, One};
 use crate::core::cie::*;
 use pbrt_macros::{coefficient_spectrum};
 
-pub type Spectrum = SampledSpectrum;
+pub type Spectrum = RGBSpectrum;
 
 lazy_static! {
     static ref X: SampledSpectrum = SampledSpectrum::init_spectrum_xyz(&CIE_LAMBDA, &CIE_X);

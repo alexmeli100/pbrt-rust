@@ -7,25 +7,37 @@ use crate::core::parallel::AtomicFloat;
 use std::sync::RwLock;
 use log::{info, error, warn};
 use anyhow::Result;
-use typed_arena::Arena;
 use crate::core::geometry::vector::Vector2f;
 use crate::core::paramset::ParamSet;
 use crate::core::imageio::write_image;
 use std::path::{PathBuf};
+use smallvec::SmallVec;
 
 const FILTER_TABLE_WIDTH: usize = 16;
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 struct FilmTilePixel {
     contrib_sum         : Spectrum,
     filter_weight_sum   : Float
 }
 
+#[derive(Clone)]
 struct Pixel {
     xyz                 : [Float; 3],
     filter_weight_sum   : Float,
     splat_xyz           : [AtomicFloat; 3],
     _pad                : Float
+}
+
+impl Default for Pixel {
+    fn default() -> Self {
+        Self {
+            xyz: [0.0; 3],
+            filter_weight_sum: 0.0,
+            splat_xyz: [AtomicFloat::default(), AtomicFloat::default(), AtomicFloat::default()],
+            _pad: 0.0
+        }
+    }
 }
 
 pub struct Film {
@@ -58,7 +70,7 @@ impl Film {
             resolution, crop_window, crop_pixel_bounds);
 
         // Allocate film image storage
-        let pixels = Vec::with_capacity(crop_pixel_bounds.area() as usize);
+        let pixels = vec![Pixel::default(); crop_pixel_bounds.area() as usize];
         // TODO: filmPixelMemory
 
         // Precompute filter weight table
@@ -206,25 +218,26 @@ impl Film {
         // Convert image to RGB and compute final pixel values
         info!("Converting image to RGB and computing final weighted pixel values");
         let mut rgb = vec![0.0; (3 * self.cropped_pixel_bounds.area()) as usize];
-        let mut offset = 0;
+        let mut offset: usize;
 
         for p in &self.cropped_pixel_bounds {
             // Convert pixel XYZ color to RGB
-            let poffset = self.get_pixel(&p);
-            let pixel = &self.pixels.read().unwrap()[poffset];
+            offset = self.get_pixel(&p);
+            let pixel = &self.pixels.read().unwrap()[offset];
+            let start = offset * 3;
             let xyz = xyz_to_rgb(pixel.xyz);
-            rgb[3 * offset] = xyz[0];
-            rgb[3 * offset + 1] = xyz[1];
-            rgb[3 * offset + 2] = xyz[2];
+            rgb[start] = xyz[0];
+            rgb[start + 1] = xyz[1];
+            rgb[start + 2] = xyz[2];
 
             // Normalize pixel with weight sum
             let filter_weight_sum = pixel.filter_weight_sum;
 
             if filter_weight_sum != 0.0 {
                 let invwt = 1.0 / filter_weight_sum;
-                rgb[3 * offset] = 0.0_f32.max(rgb[3 * offset] * invwt);
-                rgb[3 * offset + 1] = 0.0_f32.max(rgb[3 * offset + 1] * invwt);
-                rgb[3 * offset + 2] = 0.0_f32.max(rgb[3 * offset + 2] * invwt);
+                rgb[start] = (rgb[start] * invwt).max(0.0);
+                rgb[start + 1] = (rgb[start + 1] * invwt).max(0.0);
+                rgb[start + 2] = (rgb[start + 2] * invwt).max(0.0);
             }
 
             // splate value at pixel
@@ -234,15 +247,14 @@ impl Film {
                 pixel.splat_xyz[2].clone().into()
             ];
             let splat_rgb = xyz_to_rgb(splat_xyz);
-            rgb[3 * offset] += splat_scale * splat_rgb[0];
-            rgb[3 * offset + 1] += splat_scale * splat_rgb[1];
-            rgb[3 * offset + 2] += splat_scale * splat_rgb[2];
+            rgb[start] += splat_scale * splat_rgb[0];
+            rgb[start + 1] += splat_scale * splat_rgb[1];
+            rgb[start + 2] += splat_scale * splat_rgb[2];
 
             // Scale pixel value by scale
-            rgb[3 * offset] *= self.scale;
-            rgb[3 * offset + 1] *= self.scale;
-            rgb[3 * offset + 2] *= self.scale;
-            offset += 1;
+            rgb[start] *= self.scale;
+            rgb[start + 1] *= self.scale;
+            rgb[start + 2] *= self.scale;
         }
 
         info!("Writing image {} with bounds {}", self.filename.display(), self.cropped_pixel_bounds);
@@ -252,8 +264,9 @@ impl Film {
     }
 }
 
+
 pub struct FilmTile<'a> {
-    pixel_bounds        : Bounds2i,
+    pub pixel_bounds    : Bounds2i,
     filter_radius       : Vector2f,
     inv_filter_radius   : Vector2f,
     filter_table        : &'a[Float],
@@ -272,13 +285,13 @@ impl<'a> FilmTile<'a> {
             pixel_bounds: *pixel_bounds,
             filter_radius: *filter_radius,
             inv_filter_radius: Vector2f::new(1.0 / filter_radius.x, 1.0 / filter_radius.y),
-            pixels: Vec::with_capacity(std::cmp::max(0, pixel_bounds.area() as usize))
+            pixels: vec![FilmTilePixel::default(); std::cmp::max(0, pixel_bounds.area() as usize)]
         }
     }
 
     pub fn add_sample(&mut self, pfilm: &Point2f, mut L: Spectrum, sample_weight: Float) {
         // TODO: ProfilePhase
-        if L.y() > self.max_sample_luminance { L *= self.max_sample_luminance / L.y(); }
+        if L.y() > self.max_sample_luminance { L *= Spectrum::new(self.max_sample_luminance / L.y()); }
 
         // Compute sample's raster bounds;
         let pfilm_discrete = *pfilm - Vector2f::new(0.5, 0.5);
@@ -290,18 +303,17 @@ impl<'a> FilmTile<'a> {
         p1 = p1.min(&self.pixel_bounds.p_max);
 
         // Loop over filter support and add sample to pixel arrays;
-        let arena = Arena::new();
-        let ifx = arena.alloc(vec![0; (p1.x - p0.x) as usize]);
-        let ify = arena.alloc(vec![0, (p1.y - p0.y) as usize]);
+        let mut ifx: SmallVec<[usize; 16]> = SmallVec::with_capacity(p1.x as usize - p0.x as usize);
+        let mut ify: SmallVec<[usize; 16]> = SmallVec::with_capacity(p1.y as usize - p0.y as usize);
 
         for x in p0.x..p1.x {
             let fx = ((x as Float - pfilm_discrete.x) * self.inv_filter_radius.x * self.filter_table_size as Float).abs();
-            ifx[(x - p0.x) as usize] = std::cmp::min(fx.floor() as usize, self.filter_table_size - 1);
+            ifx.push(std::cmp::min(fx.floor() as usize, self.filter_table_size - 1));
         }
 
         for y in p0.y..p1.y {
             let fy = ((y as Float - pfilm_discrete.y) * self.inv_filter_radius.y * self.filter_table_size as Float).abs();
-            ify[(y - p0.y) as usize] = std::cmp::min(fy.floor() as usize, self.filter_table_size - 1);
+            ify.push(std::cmp::min(fy.floor() as usize, self.filter_table_size - 1));
         }
 
         for y in p0.y..p1.y {
@@ -312,7 +324,7 @@ impl<'a> FilmTile<'a> {
 
                 // Update pixel values with filtered sample contribution
                 let pixel = self.get_pixel(&Point2i::new(x, y));
-                pixel.contrib_sum += L * sample_weight * filter_weight;
+                pixel.contrib_sum += L * Spectrum::new(sample_weight) * Spectrum::new(filter_weight);
                 pixel.filter_weight_sum += filter_weight;
             }
         }
@@ -376,7 +388,7 @@ pub fn create_film(params: &ParamSet, filter: Filters, opts: &Options) -> Film {
                     clamp(opts.crop_window[1][0], 0.0, 1.0)),
             &Point2f::new(
                     clamp(opts.crop_window[0][1], 0.0, 1.0),
-                    clamp(opts.crop_window[1][1], 0.0, 0.0)
+                    clamp(opts.crop_window[1][1], 0.0, 1.0)
             )
         );
     }

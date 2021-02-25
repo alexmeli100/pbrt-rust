@@ -16,7 +16,9 @@
     allow(
         clippy::upper_case_acronyms,
         clippy::many_single_char_names,
-        clippy::too_many_arguments
+        clippy::too_many_arguments,
+        clippy::excessive_precision,
+        clippy::float_cmp
     )
 )]
 
@@ -32,5 +34,19 @@ pub mod pbrtparser;
 pub mod media;
 pub mod lights;
 pub mod integrators;
+
+pub fn init_stats() {
+    core::stats::init_stats();
+    core::api::init_stats();
+    core::integrator::init_stats();
+    core::lightdistrib::init_stats();
+    core::mipmap::init_stats();
+    core::scene::init_stats();
+    accelerators::init_stats();
+    cameras::init_stats();
+    shapes::init_stats();
+    integrators::init_stats();
+    media::init_stats();
+}
 
 

@@ -106,7 +106,7 @@ macro_rules! current_sample_number_default {
 macro_rules! request_1d_array_default {
     () => {
         fn request_1d_array(&mut self, n: usize) {
-            assert!(self.round_count(n) > n);
+            assert_eq!(self.round_count(n), n);
             self.samples_1d_array_sizes.push(n);
             self.sample_array_1d.push(vec![0.0; n * self.samples_per_pixel as usize]);
         }
@@ -117,7 +117,7 @@ macro_rules! request_1d_array_default {
 macro_rules! request_2d_array_default {
     () => {
         fn request_2d_array(&mut self, n: usize) {
-            assert!(self.round_count(n) > n);
+            assert_eq!(self.round_count(n), n);
             self.samples_2d_array_sizes.push(n);
             self.sample_array_2d.push(vec![Default::default(); n * self.samples_per_pixel as usize]);
         }
@@ -171,7 +171,7 @@ macro_rules! get_camera_sample_default {
     () => {
         fn get_camera_sample(&mut self, p_raster: &Point2i) -> CameraSample {
             CameraSample {
-                pfilm: Point2f::from(*p_raster),
+                pfilm: Point2f::from(*p_raster) + self.get_2d(),
                 time: self.get_1d(),
                 plens: self.get_2d()
             }
@@ -244,7 +244,9 @@ macro_rules! pixel_get_2d {
                 self.current_2d_dimension += 1;
                 sample
             } else {
-                Point2f::new(self.rng.uniform_float(), self.rng.uniform_float())
+                let y = self.rng.uniform_float();
+                let x = self.rng.uniform_float();
+                Point2f::new(x, y)
             }
         }
     }

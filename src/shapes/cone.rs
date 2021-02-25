@@ -150,10 +150,10 @@ impl Shape for Cone {
 
         // Initialize SurfaceInteraction from parametric information
         let uv = Point2f::new(u, v);
-        let si = SurfaceInteraction::new(
+        let mut si = SurfaceInteraction::new(
             &phit, &perror, &uv, &(-ray.d),
             &dpdu, &dpdv, &dndu, &dndv, ray.time, s);
-        *isect = self.object_to_world.transform_surface_interaction(&si);
+        *isect = self.object_to_world.transform_surface_interaction(&mut si);
         *thit = tshape_hit.into();
 
         true

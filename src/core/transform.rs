@@ -1,4 +1,3 @@
-use nalgebra::{Matrix4};
 use crate::core::pbrt::*;
 use crate::core::geometry::vector::*;
 use crate::core::geometry::point::*;
@@ -12,6 +11,165 @@ use crate::core::interaction::SurfaceInteraction;
 use std::cell::Cell;
 use std::sync::Arc;
 use log::error;
+
+#[derive(Debug, Copy, Clone, PartialOrd)]
+pub struct Matrix4x4 {
+    pub m: [[Float; 4]; 4],
+}
+
+impl Default for Matrix4x4 {
+    fn default() -> Self {
+        Matrix4x4 {
+            m: [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+        }
+    }
+}
+
+impl Matrix4x4 {
+    pub fn new(
+        t00: Float, t01: Float, t02: Float, t03: Float,
+        t10: Float, t11: Float, t12: Float, t13: Float,
+        t20: Float, t21: Float, t22: Float, t23: Float,
+        t30: Float, t31: Float, t32: Float, t33: Float,
+    ) -> Self {
+        Matrix4x4 {
+            m: [
+                [t00, t01, t02, t03],
+                [t10, t11, t12, t13],
+                [t20, t21, t22, t23],
+                [t30, t31, t32, t33],
+            ],
+        }
+    }
+
+    pub fn from_row_slice(v: &[Float]) -> Self {
+        Self::new(
+            v[0],  v[1],  v[2],  v[3],
+            v[4],  v[5],  v[6],  v[7],
+            v[8],  v[9],  v[10], v[11],
+            v[12], v[13], v[14], v[15]
+        )
+    }
+
+    pub fn from_col_slice(v: &[Float]) -> Self {
+        Self::new(
+            v[0], v[4], v[8],  v[12],
+            v[1], v[5], v[9],  v[13],
+            v[2], v[6], v[10], v[14],
+            v[3], v[7], v[11], v[15]
+        )
+    }
+
+    pub fn transpose(m: &Matrix4x4) -> Matrix4x4 {
+        Matrix4x4 {
+            m: [
+                [m.m[0][0], m.m[1][0], m.m[2][0], m.m[3][0]],
+                [m.m[0][1], m.m[1][1], m.m[2][1], m.m[3][1]],
+                [m.m[0][2], m.m[1][2], m.m[2][2], m.m[3][2]],
+                [m.m[0][3], m.m[1][3], m.m[2][3], m.m[3][3]],
+            ],
+        }
+    }
+    pub fn inverse(m: &Matrix4x4) -> Matrix4x4 {
+        let mut indxc = vec![0; 4];
+        let mut indxr = vec![0; 4];
+        let mut ipiv = vec![0; 4];
+        let mut minv: Matrix4x4 = Matrix4x4::new(
+            m.m[0][0], m.m[0][1], m.m[0][2], m.m[0][3], m.m[1][0], m.m[1][1], m.m[1][2], m.m[1][3],
+            m.m[2][0], m.m[2][1], m.m[2][2], m.m[2][3], m.m[3][0], m.m[3][1], m.m[3][2], m.m[3][3],
+        );
+        for i in 0..4 {
+            let mut irow = 0;
+            let mut icol = 0;
+            let mut big: Float = 0.0;
+            for j in 0..4 {
+                if ipiv[j] != 1 {
+                    for (k, item) in ipiv.iter().enumerate().take(4) {
+                        if *item == 0 {
+                            let abs: Float = (minv.m[j][k]).abs();
+                            if abs >= big {
+                                big = abs;
+                                irow = j;
+                                icol = k;
+                            }
+                        } else if *item > 1 {
+                            error!("Singular matrix in MatrixInvert");
+                        }
+                    }
+                }
+            }
+            ipiv[icol] += 1;
+            if irow != icol {
+                for k in 0..4 {
+                    let swap = minv.m[irow][k];
+                    minv.m[irow][k] = minv.m[icol][k];
+                    minv.m[icol][k] = swap;
+                }
+            }
+            indxr[i] = irow;
+            indxc[i] = icol;
+            if minv.m[icol][icol] == 0.0 {
+                error!("Singular matrix in MatrixInvert");
+            }
+            let pivinv: Float = 1.0 / minv.m[icol][icol];
+            minv.m[icol][icol] = 1.0;
+            for j in 0..4 {
+                minv.m[icol][j] *= pivinv;
+            }
+            // subtract this row from others to zero out their columns
+            for j in 0..4 {
+                if j != icol {
+                    let save: Float = minv.m[j][icol];
+                    minv.m[j][icol] = 0.0;
+                    for k in 0..4 {
+                        minv.m[j][k] -= minv.m[icol][k] * save;
+                    }
+                }
+            }
+        }
+        // swap columns to reflect permutation
+        for i in 0..4 {
+            let j = 3 - i;
+            if indxr[j] != indxc[j] {
+                for k in 0..4 {
+                    minv.m[k].swap(indxr[j], indxc[j])
+                }
+            }
+        }
+        minv
+    }
+
+    pub fn mul(m1: &Self, m2: &Self) -> Self {
+        let mut r = Matrix4x4::default();
+        for i in 0..4 {
+            for j in 0..4 {
+                r.m[i][j] = m1.m[i][0] * m2.m[0][j]
+                    + m1.m[i][1] * m2.m[1][j]
+                    + m1.m[i][2] * m2.m[2][j]
+                    + m1.m[i][3] * m2.m[3][j];
+            }
+        }
+        r
+    }
+}
+
+impl PartialEq for Matrix4x4 {
+    fn eq(&self, rhs: &Matrix4x4) -> bool {
+        for i in 0..4 {
+            for j in 0..4 {
+                if self.m[i][j] != rhs.m[i][j] {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
 
 pub fn solve_linearsystem_2x2(a: [[Float; 2]; 2], b: [Float; 2],
                               x0: &mut Float, x1: &mut Float) -> bool {
@@ -29,15 +187,15 @@ pub fn solve_linearsystem_2x2(a: [[Float; 2]; 2], b: [Float; 2],
 
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub struct Transform {
-    pub m       : Matrix4<Float>,
-    pub m_inv   : Matrix4<Float>
+    pub m       : Matrix4x4,
+    pub m_inv   : Matrix4x4
 }
 
 impl Default for Transform {
     fn default() -> Self {
         Transform {
-            m: Matrix4::identity(),
-            m_inv: Matrix4::identity()
+            m: Matrix4x4::default(),
+            m_inv: Matrix4x4::default()
         }
     }
 }
@@ -48,14 +206,14 @@ impl Transform {
     }
 
     pub fn from_matrix_slice(m: &[Float]) -> Self {
-        let m = Matrix4::from_row_slice(m);
-        let m_inv = m.try_inverse().unwrap();
+        let m = Matrix4x4::from_row_slice(m);
+        let m_inv = Matrix4x4::inverse(&m);
 
         Self { m, m_inv }
     }
 
-    pub fn from_matrix(m: &Matrix4<Float>) -> Self {
-        let inv = m.try_inverse().unwrap();
+    pub fn from_matrix(m: &Matrix4x4) -> Self {
+        let inv = Matrix4x4::inverse(&m);
 
         Self {
             m: *m,
@@ -75,7 +233,7 @@ impl Transform {
         not_one!(la2) || not_one!(lb2) || not_one!(lc2)
     }
 
-    pub fn from_matrices(m: &Matrix4<Float>, m_inv: &Matrix4<Float>) -> Self {
+    pub fn from_matrices(m: &Matrix4x4, m_inv: &Matrix4x4) -> Self {
         Self { m: *m, m_inv: *m_inv }
     }
 
@@ -84,22 +242,25 @@ impl Transform {
     }
 
     pub fn transpose(t: &Transform) -> Self {
-        Self { m: t.m.transpose(), m_inv: t.m_inv.transpose() }
+        Self { m: Matrix4x4::transpose(&t.m), m_inv: Matrix4x4::transpose(&t.m_inv) }
     }
 
     pub fn is_identity(&self) -> bool {
-        self.m.is_identity(1e-10)
+        self.m.m[0][0] == 1.0 && self.m.m[0][1] == 0.0 && self.m.m[0][2] == 0.0 && self.m.m[0][3] == 0.0 &&
+        self.m.m[1][0] == 0.0 && self.m.m[1][1] == 1.0 && self.m.m[1][2] == 0.0 && self.m.m[1][3] == 0.0 &&
+        self.m.m[2][0] == 0.0 && self.m.m[2][1] == 0.0 && self.m.m[2][2] == 1.0 && self.m.m[2][3] == 0.0 &&
+        self.m.m[3][0] == 0.0 && self.m.m[3][1] == 0.0 && self.m.m[3][2] == 0.0 && self.m.m[3][3] == 1.0
     }
 
     pub fn translate(delta: &Vector3f) -> Self {
-        let m = Matrix4::from_row_slice(&[
+        let m = Matrix4x4::from_row_slice(&[
             1.0, 0.0, 0.0, delta.x,
             0.0, 1.0, 0.0, delta.y,
             0.0, 0.0, 1.0, delta.z,
             0.0, 0.0, 0.0, 1.0
         ]);
 
-        let m_inv = Matrix4::from_row_slice(&[
+        let m_inv = Matrix4x4::from_row_slice(&[
             1.0, 0.0, 0.0, -delta.x,
             0.0, 1.0, 0.0, -delta.y,
             0.0, 0.0, 1.0, -delta.z,
@@ -110,14 +271,14 @@ impl Transform {
     }
 
     pub fn scale(x: Float, y: Float, z: Float) -> Self {
-        let m = Matrix4::from_row_slice(&[
+        let m = Matrix4x4::from_row_slice(&[
             x,   0.0, 0.0, 0.0,
             0.0, y,   0.0, 0.0,
             0.0, 0.0, z,   0.0,
             0.0, 0.0, 0.0, 1.0
         ]);
 
-        let m_inv = Matrix4::from_row_slice(&[
+        let m_inv = Matrix4x4::from_row_slice(&[
             1.0/x, 0.0,   0.0,   0.0,
             0.0,   1.0/y, 0.0,   0.0,
             0.0,   0.0,   1.0/z, 0.0,
@@ -131,75 +292,75 @@ impl Transform {
         let sin_theta = radians(theta).sin();
         let cos_theta = radians(theta).cos();
 
-        let m = Matrix4::from_row_slice(&[
+        let m = Matrix4x4::from_row_slice(&[
             1.0, 0.0, 0.0, 0.0,
             0.0, cos_theta, -sin_theta, 0.0,
             0.0, sin_theta, cos_theta, 0.0,
             0.0, 0.0, 0.0, 1.0
         ]);
 
-        Self { m, m_inv: m.transpose() }
+        Self { m, m_inv: Matrix4x4::transpose(&m) }
     }
 
     pub fn rotate_y(theta: Float) -> Self {
         let sin_theta = radians(theta).sin();
         let cos_theta = radians(theta).cos();
 
-        let m = Matrix4::from_row_slice(&[
+        let m = Matrix4x4::from_row_slice(&[
             cos_theta, 0.0, sin_theta, 0.0,
             0.0, 1.0, 0.0, 0.0,
             -sin_theta, 0.0, cos_theta, 0.0,
             0.0, 0.0, 0.0, 1.0
         ]);
 
-        Self { m, m_inv: m.transpose() }
+        Self { m, m_inv: Matrix4x4::transpose(&m) }
     }
 
     pub fn rotate_z(theta: Float) -> Self {
         let sin_theta = radians(theta).sin();
         let cos_theta = radians(theta).cos();
 
-        let m = Matrix4::from_row_slice(&[
+        let m = Matrix4x4::from_row_slice(&[
             cos_theta, -sin_theta, 0.0, 0.0,
             sin_theta, cos_theta, 0.0, 0.0,
             0.0, 0.0, 1.0, 0.0,
             0.0, 0.0, 0.0, 1.0
         ]);
 
-        Self { m, m_inv: m.transpose() }
+        Self { m, m_inv: Matrix4x4::transpose(&m) }
     }
 
     pub fn rotate(theta: Float, axis: &Vector3f) -> Self {
         let a = axis.normalize();
         let sin_theta = radians(theta).sin();
         let cos_theta = radians(theta).cos();
-        let mut m: Matrix4<Float> = Matrix4::identity();
+        let mut m = Matrix4x4::default();
 
-        m[(0, 0)] = a.x * a.x + (1.0 - a.x * a.x) * cos_theta;
-        m[(0, 1)] = a.x * a.y * (1.0 - cos_theta) - a.z * sin_theta;
-        m[(0, 2)] = a.x * a.z * (1.0 - cos_theta) + a.y * sin_theta;
-        m[(0, 3)] = 0.0;
+        m.m[0][0] = a.x * a.x + (1.0 - a.x * a.x) * cos_theta;
+        m.m[0][1] = a.x * a.y * (1.0 - cos_theta) - a.z * sin_theta;
+        m.m[0][2] = a.x * a.z * (1.0 - cos_theta) + a.y * sin_theta;
+        m.m[0][3] = 0.0;
 
-        m[(1, 0)] = a.x * a.y * (1.0 - cos_theta) + a.z * sin_theta;
-        m[(1, 1)] = a.y * a.y + (1.0 - a.y * a.y) * cos_theta;
-        m[(1, 2)] = a.y * a.z * (1.0 - cos_theta) - a.x * sin_theta;
-        m[(1, 3)] = 0.0;
+        m.m[1][0] = a.x * a.y * (1.0 - cos_theta) + a.z * sin_theta;
+        m.m[1][1] = a.y * a.y + (1.0 - a.y * a.y) * cos_theta;
+        m.m[1][2] = a.y * a.z * (1.0 - cos_theta) - a.x * sin_theta;
+        m.m[1][3] = 0.0;
 
-        m[(2, 0)] = a.x * a.z * (1.0 - cos_theta) - a.y * sin_theta;
-        m[(2, 1)] = a.y * a.z * (1.0 - cos_theta) + a.x * sin_theta;
-        m[(2, 2)] = a.z * a.z + (1.0 - a.z * a.z) * cos_theta;
-        m[(2, 3)] = 0.0;
+        m.m[2][0] = a.x * a.z * (1.0 - cos_theta) - a.y * sin_theta;
+        m.m[2][1] = a.y * a.z * (1.0 - cos_theta) + a.x * sin_theta;
+        m.m[2][2] = a.z * a.z + (1.0 - a.z * a.z) * cos_theta;
+        m.m[2][3] = 0.0;
 
-        Self { m, m_inv: m.transpose()}
+        Self { m, m_inv: Matrix4x4::transpose(&m)}
     }
 
     pub fn look_at(pos: &Point3f, look: &Point3f, up: &Vector3f) -> Self {
-        let mut camera_to_world: Matrix4<Float> = Matrix4::identity();
+        let mut camera_to_world = Matrix4x4::default();
 
-        camera_to_world[(0, 3)] = pos.x;
-        camera_to_world[(1, 3)] = pos.y;
-        camera_to_world[(2, 3)] = pos.z;
-        camera_to_world[(3, 3)] = 1.0;
+        camera_to_world.m[0][3] = pos.x;
+        camera_to_world.m[1][3] = pos.y;
+        camera_to_world.m[2][3] = pos.z;
+        camera_to_world.m[3][3] = 1.0;
 
         let dir = (*look - *pos).normalize();
 
@@ -215,20 +376,20 @@ impl Transform {
         let right = up.normalize().cross(&dir).normalize();
         let new_up = dir.cross(&right);
 
-        camera_to_world[(0,0)] = right.x;
-        camera_to_world[(1,0)] = right.y;
-        camera_to_world[(2,0)] = right.z;
-        camera_to_world[(3,0)] = 0.0;
-        camera_to_world[(0,1)] = new_up.x;
-        camera_to_world[(1,1)] = new_up.y;
-        camera_to_world[(2,1)] = new_up.z;
-        camera_to_world[(3,1)] = 0.0;
-        camera_to_world[(0,2)] = dir.x;
-        camera_to_world[(1,2)] = dir.y;
-        camera_to_world[(2,2)] = dir.z;
-        camera_to_world[(3,2)] = 0.0;
+        camera_to_world.m[0][0] = right.x;
+        camera_to_world.m[1][0] = right.y;
+        camera_to_world.m[2][0] = right.z;
+        camera_to_world.m[3][0] = 0.0;
+        camera_to_world.m[0][1] = new_up.x;
+        camera_to_world.m[1][1] = new_up.y;
+        camera_to_world.m[2][1] = new_up.z;
+        camera_to_world.m[3][1] = 0.0;
+        camera_to_world.m[0][2] = dir.x;
+        camera_to_world.m[1][2] = dir.y;
+        camera_to_world.m[2][2] = dir.z;
+        camera_to_world.m[3][2] = 0.0;
 
-        Self { m: camera_to_world.try_inverse().unwrap(), m_inv: camera_to_world}
+        Self { m: Matrix4x4::inverse(&camera_to_world), m_inv: camera_to_world}
     }
 
     pub fn orthographic(znear: Float, zfar: Float) -> Self {
@@ -237,7 +398,7 @@ impl Transform {
 
     pub fn perspective(fov: Float, n: Float, f: Float) -> Self {
         // Perform projective divide for projection
-        let persp = Matrix4::from_row_slice(&[
+        let persp = Matrix4x4::from_row_slice(&[
             1.0, 0.0, 0.0, 0.0,
             0.0, 1.0, 0.0, 0.0,
             0.0, 0.0, f / (f - n), -f * n / (f - n),
@@ -255,10 +416,10 @@ impl Transform {
         let y = p.y;
         let z = p.z;
 
-        let xp = x*self.m[(0, 0)] + y*self.m[(0, 1)] + z*self.m[(0, 2)] + self.m[(0, 3)];
-        let yp = x*self.m[(1, 0)] + y*self.m[(1, 1)] + z*self.m[(1, 2)] + self.m[(1, 3)];
-        let zp = x*self.m[(2, 0)] + y*self.m[(2, 1)] + z*self.m[(2, 2)] + self.m[(2, 3)];
-        let wp = x*self.m[(3, 0)] + y*self.m[(3, 1)] + z*self.m[(3, 2)] + self.m[(3, 3)];
+        let xp = x*self.m.m[0][0] + y*self.m.m[0][1] + z*self.m.m[0][2] + self.m.m[0][3];
+        let yp = x*self.m.m[1][0] + y*self.m.m[1][1] + z*self.m.m[1][2] + self.m.m[1][3];
+        let zp = x*self.m.m[2][0] + y*self.m.m[2][1] + z*self.m.m[2][2] + self.m.m[2][3];
+        let wp = x*self.m.m[3][0] + y*self.m.m[3][1] + z*self.m.m[3][2] + self.m.m[3][3];
 
         assert_ne!(wp, 0.0);
 
@@ -275,14 +436,14 @@ impl Transform {
         let y = p.y;
         let z = p.z;
 
-        let xp = x * self.m[(0,0)] + y * self.m[(0,1)] + z * self.m[(0,2)] + self.m[(0,3)];
-        let yp = x * self.m[(1,0)] + y * self.m[(1,1)] + z * self.m[(1,2)] + self.m[(1,3)];
-        let zp = x * self.m[(2,0)] + y * self.m[(2,1)] + z * self.m[(2,2)] + self.m[(2,3)];
-        let wp = x * self.m[(3,0)] + y * self.m[(3,1)] + z * self.m[(3,2)] + self.m[(3,3)];
+        let xp = x * self.m.m[0][0] + y * self.m.m[0][1] + z * self.m.m[0][2] + self.m.m[0][3];
+        let yp = x * self.m.m[1][0] + y * self.m.m[1][1] + z * self.m.m[1][2] + self.m.m[1][3];
+        let zp = x * self.m.m[2][0] + y * self.m.m[2][1] + z * self.m.m[2][2] + self.m.m[2][3];
+        let wp = x * self.m.m[3][0] + y * self.m.m[3][1] + z * self.m.m[3][2] + self.m.m[3][3];
 
-        let x_abs_sum = (x * self.m[(0, 0)]).abs() + (y * self.m[(0, 1)]).abs() + (z * self.m[(0, 2)]).abs() + (self.m[(0, 3)]).abs();
-        let y_abs_sum = (x * self.m[(1, 0)]).abs() + (y * self.m[(1, 1)]).abs() + (z * self.m[(1, 2)]).abs() + (self.m[(1, 3)]).abs();
-        let z_abs_sum = (x * self.m[(2, 0)]).abs() + (y * self.m[(2, 1)]).abs() + (z * self.m[(2, 2)]).abs() + (self.m[(2, 3)]).abs();
+        let x_abs_sum = (x * self.m.m[0][0]).abs() + (y * self.m.m[0][1]).abs() + (z * self.m.m[0][2]).abs() + (self.m.m[0][3]).abs();
+        let y_abs_sum = (x * self.m.m[1][0]).abs() + (y * self.m.m[1][1]).abs() + (z * self.m.m[1][2]).abs() + (self.m.m[1][3]).abs();
+        let z_abs_sum = (x * self.m.m[2][0]).abs() + (y * self.m.m[2][1]).abs() + (z * self.m.m[2][2]).abs() + (self.m.m[2][3]).abs();
 
         *p_error = Vector3::new(x_abs_sum, y_abs_sum, z_abs_sum) * gamma(3);
         assert_ne!(wp, 0.0);
@@ -299,29 +460,29 @@ impl Transform {
         let y = p.y;
         let z = p.z;
 
-        let xp = x*self.m[(0,0)] + y*self.m[(0,1)] + z*self.m[(0,2)] + self.m[(0,3)];
-        let yp = x*self.m[(1,0)] + y*self.m[(1,1)] + z*self.m[(1,2)] + self.m[(1,3)];
-        let zp = x*self.m[(2,0)] + y*self.m[(2,1)] + z*self.m[(2,2)] + self.m[(2,3)];
-        let wp = x*self.m[(3,0)] + y*self.m[(3,1)] + z*self.m[(3,2)] + self.m[(3,3)];
+        let xp = x*self.m.m[0][0] + y*self.m.m[0][1] + z*self.m.m[0][2] + self.m.m[0][3];
+        let yp = x*self.m.m[1][0] + y*self.m.m[1][1] + z*self.m.m[1][2] + self.m.m[1][3];
+        let zp = x*self.m.m[2][0] + y*self.m.m[2][1] + z*self.m.m[2][2] + self.m.m[2][3];
+        let wp = x*self.m.m[3][0] + y*self.m.m[3][1] + z*self.m.m[3][2] + self.m.m[3][3];
 
         abs_error.x =
             (gamma(3) + 1.0) *
-                ((self.m[(0, 0)]).abs() * p_error.x + (self.m[(0, 1)]).abs() * p_error.y +
-                 (self.m[(0, 2)]).abs() * p_error.x) +
-            gamma(3) * (self.m[(0, 0)] * x).abs() + (self.m[(0, 1)] * y).abs() +
-                (self.m[(0, 2)] * z).abs() + (self.m[(0, 3)]).abs();
+                ((self.m.m[0][0]).abs() * p_error.x + (self.m.m[0][1]).abs() * p_error.y +
+                 (self.m.m[0][2]).abs() * p_error.z) +
+            gamma(3) * ((self.m.m[0][0] * x).abs() + (self.m.m[0][1] * y).abs() +
+                (self.m.m[0][2] * z).abs() + (self.m.m[0][3]).abs());
         abs_error.y =
             (gamma(3) + 1.0) *
-            ((self.m[(1, 0)]).abs() * p_error.x + (self.m[(1, 1)]).abs() * p_error.y +
-                (self.m[(1, 2)]).abs() * p_error.z) +
-            gamma(3) * ((self.m[(1, 0)] * x).abs() + (self.m[(1, 1)] * y).abs() +
-                (self.m[(1, 2)] * z).abs() + (self.m[(1, 3)]).abs());
+            ((self.m.m[1][0]).abs() * p_error.x + (self.m.m[1][1]).abs() * p_error.y +
+                (self.m.m[1][2]).abs() * p_error.z) +
+            gamma(3) * ((self.m.m[1][0] * x).abs() + (self.m.m[1][1] * y).abs() +
+                (self.m.m[1][2] * z).abs() + (self.m.m[1][3]).abs());
         abs_error.z =
             (gamma(3) + 1.0) *
-            ((self.m[(2, 0)]).abs() * p_error.x + (self.m[(2, 1)]).abs() * p_error.y +
-                (self.m[(2, 2)]).abs() * p_error.z) +
-            gamma(3) * ((self.m[(2, 0)] * x).abs() + (self.m[(2, 1)] * y).abs() +
-                (self.m[(2, 2)] * z).abs() + (self.m[(2, 3)]).abs());
+            ((self.m.m[2][0]).abs() * p_error.x + (self.m.m[2][1]).abs() * p_error.y +
+                (self.m.m[2][2]).abs() * p_error.z) +
+            gamma(3) * ((self.m.m[2][0] * x).abs() + (self.m.m[2][1] * y).abs() +
+                (self.m.m[2][2] * z).abs() + (self.m.m[2][3]).abs());
 
         assert_ne!(wp, 0.0);
 
@@ -340,9 +501,9 @@ impl Transform {
         let z = v.z;
 
         Vector3::new(
-            x*self.m[(0, 0)] + y*self.m[(0, 1)] + z*self.m[(0, 2)],
-            x*self.m[(1, 0)] + y*self.m[(1, 1)] + z*self.m[(1, 2)],
-            x*self.m[(2, 0)] + y*self.m[(2, 1)] + z*self.m[(2, 2)]
+            x*self.m.m[0][0] + y*self.m.m[0][1] + z*self.m.m[0][2],
+            x*self.m.m[1][0] + y*self.m.m[1][1] + z*self.m.m[1][2],
+            x*self.m.m[2][0] + y*self.m.m[2][1] + z*self.m.m[2][2]
         )
     }
 
@@ -354,14 +515,14 @@ impl Transform {
         let z = v.z;
 
         let gamma = gamma(3);
-        abs_error.x = gamma * ((x * self.m[(0, 0)]).abs() + (y * self.m[(0, 1)]).abs() + (z * self.m[(0, 2)]).abs());
-        abs_error.y = gamma * ((x * self.m[(1, 0)]).abs() + (y * self.m[(1, 1)]).abs() + (z * self.m[(1, 2)]).abs());
-        abs_error.z = gamma * ((x * self.m[(2, 0)]).abs() + (y * self.m[(2, 1)]).abs() + (z * self.m[(2, 2)]).abs());
+        abs_error.x = gamma * ((x * self.m.m[0][0]).abs() + (y * self.m.m[0][1]).abs() + (z * self.m.m[0][2]).abs());
+        abs_error.y = gamma * ((x * self.m.m[1][0]).abs() + (y * self.m.m[1][1]).abs() + (z * self.m.m[1][2]).abs());
+        abs_error.z = gamma * ((x * self.m.m[2][0]).abs() + (y * self.m.m[2][1]).abs() + (z * self.m.m[2][2]).abs());
 
         Vector3::new(
-            x*self.m[(0, 0)] + y*self.m[(0, 1)] + z*self.m[(0, 2)],
-            x*self.m[(1, 0)] + y*self.m[(1, 1)] + z*self.m[(1, 2)],
-            x*self.m[(2, 0)] + y*self.m[(2, 1)] + z*self.m[(2, 2)]
+            x*self.m.m[0][0] + y*self.m.m[0][1] + z*self.m.m[0][2],
+            x*self.m.m[1][0] + y*self.m.m[1][1] + z*self.m.m[1][2],
+            x*self.m.m[2][0] + y*self.m.m[2][1] + z*self.m.m[2][2]
         )
     }
 
@@ -373,9 +534,9 @@ impl Transform {
         let z = n.z;
 
         Normal3::new(
-            x * self.m_inv[(0, 0)] + y * self.m_inv[(1, 0)] + z * self.m_inv[(2, 0)],
-            x * self.m_inv[(0, 1)] + y * self.m_inv[(1, 1)] + z * self.m_inv[(2, 1)],
-            x * self.m_inv[(0, 2)] + y * self.m_inv[(1, 2)] + z * self.m_inv[(2, 2)]
+            x * self.m_inv.m[0][0] + y * self.m_inv.m[1][0] + z * self.m_inv.m[2][0],
+            x * self.m_inv.m[0][1] + y * self.m_inv.m[1][1] + z * self.m_inv.m[2][1],
+            x * self.m_inv.m[0][2] + y * self.m_inv.m[1][2] + z * self.m_inv.m[2][2]
         )
     }
 
@@ -443,11 +604,11 @@ impl Transform {
         ret
     }
 
-    pub fn transform_surface_interaction<'a>(&self, si: &SurfaceInteraction<'a>) -> SurfaceInteraction<'a> {
+    pub fn transform_surface_interaction<'a>(&self, si: &mut SurfaceInteraction<'a>) -> SurfaceInteraction<'a> {
         let mut ret = SurfaceInteraction::<'a>::default();
         ret.p = self.transform_point_abs_error(&si.p, &si.p_error, &mut ret.p_error);
         ret.n = self.transform_normal(&si.n).normalize();
-        ret.wo = self.transform_vector(&si.wo);
+        ret.wo = self.transform_vector(&si.wo).normalize();
         ret.time = si.time;
         ret.uv = si.uv;
         ret.dpdu = self.transform_vector(&si.dpdu);
@@ -468,16 +629,16 @@ impl Transform {
         ret.dpdy = Cell::new(self.transform_vector(&si.dpdy.get()));
         ret.shape = si.get_shape();
         ret.primitive = si.get_primitive();
-        ret.bsdf = None;
+        ret.bsdf = si.bsdf.take();
         ret.bssrdf = si.get_bssrdf();
 
         ret
     }
 
     pub fn swaps_handedness(&self) -> bool {
-        let det = self.m[(0, 0)] * (self.m[(1, 1)] * self.m[(2, 2)] - self.m[(1, 2)] * self.m[(2, 1)]) -
-                       self.m[(0, 1)] * (self.m[(1, 0)] * self.m[(2, 2)] - self.m[(1, 2)] * self.m[(2, 0)]) +
-                       self.m[(0, 2)] * (self.m[(1, 0)] * self.m[(2, 1)] - self.m[(1, 1)] * self.m[(2, 0)]);
+        let det = self.m.m[0][0] * (self.m.m[1][1] * self.m.m[2][2] - self.m.m[1][2] * self.m.m[2][1]) -
+                  self.m.m[0][1] * (self.m.m[1][0] * self.m.m[2][2] - self.m.m[1][2] * self.m.m[2][0]) +
+                  self.m.m[0][2] * (self.m.m[1][0] * self.m.m[2][1] - self.m.m[1][1] * self.m.m[2][0]);
 
         det < 0.0
     }
@@ -488,8 +649,8 @@ impl Mul for Transform {
 
     fn mul(self, other: Self) -> Self::Output {
         Transform {
-            m: self.m * other.m,
-            m_inv: other.m_inv * self.m_inv
+            m: Matrix4x4::mul(&self.m, &other.m),
+            m_inv: Matrix4x4::mul(&other.m_inv, &self.m_inv)
         }
     }
 }
@@ -506,19 +667,19 @@ impl From<Quaternion> for Transform {
         let wy = q.v.y * q.w;
         let wz = q.v.z * q.w;
 
-        let mut m = Matrix4::identity();
+        let mut m = Matrix4x4::default();
 
-        m[(0, 0)] = 1.0 - 2.0 * (yy + zz);
-        m[(0, 1)] = 2.0 * (xy + wz);
-        m[(0, 2)] = 2.0 * (xz - wy);
-        m[(1, 0)] = 2.0 * (xy - wz);
-        m[(1, 1)] = 1.0 - 2.0 * (xx + zz);
-        m[(1, 2)] = 2.0 * (yz + wx);
-        m[(2, 0)] = 2.0 * (xz + wy);
-        m[(2, 1)] = 2.0 * (yz - wx);
-        m[(2, 2)] = 1.0 - 2.0 * (xx + yy);
+        m.m[0][0] = 1.0 - 2.0 * (yy + zz);
+        m.m[0][1] = 2.0 * (xy + wz);
+        m.m[0][2] = 2.0 * (xz - wy);
+        m.m[1][0] = 2.0 * (xy - wz);
+        m.m[1][1] = 1.0 - 2.0 * (xx + zz);
+        m.m[1][2] = 2.0 * (yz + wx);
+        m.m[2][0] = 2.0 * (xz + wy);
+        m.m[2][1] = 2.0 * (yz - wx);
+        m.m[2][2] = 1.0 - 2.0 * (xx + yy);
 
-        Transform::from_matrices(&m.transpose(), &m)
+        Transform::from_matrices(&Matrix4x4::transpose(&m), &m)
     }
 }
 
@@ -532,7 +693,7 @@ pub struct AnimatedTransform {
     has_rotation        : bool,
     t                   : [Vector3f; 2],
     r                   : [Quaternion; 2],
-    pub s                   : [Matrix4<Float>; 2],
+    pub s               : [Matrix4x4; 2],
     c1                  : [DerivativeTerm; 3],
     c2                  : [DerivativeTerm; 3],
     c3                  : [DerivativeTerm; 3],
@@ -551,7 +712,7 @@ impl Default for AnimatedTransform {
             has_rotation: false,
             t: [Vector3f::default(); 2],
             r: [Quaternion::default(); 2],
-            s: [Matrix4::identity(); 2],
+            s: [Matrix4x4::default(); 2],
             c1: [DerivativeTerm::default(); 3],
             c2: [DerivativeTerm::default(); 3],
             c3: [DerivativeTerm::default(); 3],
@@ -571,7 +732,7 @@ impl AnimatedTransform {
             has_rotation: false,
             t: [Vector3f::default(); 2],
             r: [Quaternion::default(); 2],
-            s: [Matrix4::identity(); 2],
+            s: [Matrix4x4::default(); 2],
             c1: [DerivativeTerm::default(); 3],
             c2: [DerivativeTerm::default(); 3],
             c3: [DerivativeTerm::default(); 3],
@@ -608,24 +769,24 @@ impl AnimatedTransform {
             let qperpy = qperp.v.y;
             let qperpz = qperp.v.z;
             let qperpw = qperp.w;
-            let s000 = res.s[0][(0, 0)];
-            let s001 = res.s[0][(0, 1)];
-            let s002 = res.s[0][(0, 2)];
-            let s010 = res.s[0][(1, 0)];
-            let s011 = res.s[0][(1, 1)];
-            let s012 = res.s[0][(1, 2)];
-            let s020 = res.s[0][(2, 0)];
-            let s021 = res.s[0][(2, 1)];
-            let s022 = res.s[0][(2, 2)];
-            let s100 = res.s[1][(0, 0)];
-            let s101 = res.s[1][(0, 1)];
-            let s102 = res.s[1][(0, 2)];
-            let s110 = res.s[1][(1, 0)];
-            let s111 = res.s[1][(1, 1)];
-            let s112 = res.s[1][(1, 2)];
-            let s120 = res.s[1][(2, 0)];
-            let s121 = res.s[1][(2, 1)];
-            let s122 = res.s[1][(2, 2)];
+            let s000 = res.s[0].m[0][0];
+            let s001 = res.s[0].m[0][1];
+            let s002 = res.s[0].m[0][2];
+            let s010 = res.s[0].m[1][0];
+            let s011 = res.s[0].m[1][1];
+            let s012 = res.s[0].m[1][2];
+            let s020 = res.s[0].m[2][0];
+            let s021 = res.s[0].m[2][1];
+            let s022 = res.s[0].m[2][2];
+            let s100 = res.s[1].m[0][0];
+            let s101 = res.s[1].m[0][1];
+            let s102 = res.s[1].m[0][2];
+            let s110 = res.s[1].m[1][0];
+            let s111 = res.s[1].m[1][1];
+            let s112 = res.s[1].m[1][2];
+            let s120 = res.s[1].m[2][0];
+            let s121 = res.s[1].m[2][1];
+            let s122 = res.s[1].m[2][2];
 
             res.c1[0] = DerivativeTerm::new(
                 -t0x + t1x,
@@ -1281,20 +1442,20 @@ impl AnimatedTransform {
         res
     }
 
-    pub fn decompose(m: &Matrix4<Float>, t: &mut Vector3f, rquat: &mut Quaternion, s: &mut Matrix4<Float>) {
+    pub fn decompose(m: &Matrix4x4, t: &mut Vector3f, rquat: &mut Quaternion, s: &mut Matrix4x4) {
         // Extract translation
-        t.x = m[(0, 3)];
-        t.y = m[(1, 3)];
-        t.z = m[(2, 3)];
+        t.x = m.m[0][3];
+        t.y = m.m[1][3];
+        t.z = m.m[2][3];
         // Compute new transformation matrix without translation
         let mut new_m = *m;
 
         for i in 0..3 {
-            new_m[(i, 3)] = 0.0;
-            new_m[(3, i)] = 0.0;
+            new_m.m[i][3] = 0.0;
+            new_m.m[3][i] = 0.0;
         }
 
-        new_m[(3, 3)] = 1.0;
+        new_m.m[3][3] = 1.0;
 
         // Extract rotation R from transformation matrix
         let mut norm: Float;
@@ -1302,20 +1463,20 @@ impl AnimatedTransform {
         let mut r = new_m;
 
         loop {
-            let mut rnext = Matrix4::<Float>::identity();
-            let rit = r.transpose().try_inverse().unwrap();
+            let mut rnext = Matrix4x4::default();
+            let rit = Matrix4x4::inverse(&Matrix4x4::transpose(&r));
 
             for i in 0..4 {
                 for j in 0..4 {
-                    rnext[(i, j)] = 0.5 * (r[(i, j)] + rit[(i, j)]);
+                    rnext.m[i][j] = 0.5 * (r.m[i][j] + rit.m[i][j]);
                 }
             }
 
             norm = 0.0;
             for i in 0..3 {
-                let n = (r[(i, 0)] - rnext[(i, 0)]).abs() +
-                        (r[(i, 1)] - rnext[(i, 1)]).abs() +
-                        (r[(i, 2)] - rnext[(i, 2)]).abs();
+                let n = (r.m[i][0] - rnext.m[i][0]).abs() +
+                        (r.m[i][1] - rnext.m[i][1]).abs() +
+                        (r.m[i][2] - rnext.m[i][2]).abs();
                 norm = norm.max(n);
             }
 
@@ -1328,7 +1489,8 @@ impl AnimatedTransform {
         }
 
         *rquat = Transform::from_matrix(&r).into();
-        *s = r.try_inverse().unwrap() * m;
+        *s = Matrix4x4::mul(&Matrix4x4::inverse(&r), m);
+        //*s = r.try_inverse().unwrap() * m;
     }
 
     pub fn interpolate(&self, time: Float, t: &mut Transform) {
@@ -1351,11 +1513,11 @@ impl AnimatedTransform {
         let rotate = slerp(&self.r[0], &self.r[1], dt);
 
         // Interpolate scale at dt
-        let mut scale = Matrix4::<Float>::identity();
+        let mut scale = Matrix4x4::default();
 
         for i in 0..3 {
             for j in 0..3 {
-                scale[(i, j)] = lerp(dt, self.s[0][(i, j)], self.s[1][(i, j)]);
+                scale.m[i][j] = lerp(dt, self.s[0].m[i][j], self.s[1].m[i][j]);
             }
         }
 

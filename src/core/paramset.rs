@@ -166,7 +166,7 @@ impl ParamSet {
 
         let n = nvalues / 2;
         let mut s = Vec::with_capacity(n);
-        let mut v = Vec::with_capacity(N_CIE_SAMPLES);
+        let mut v = vec![0.0; N_CIE_SAMPLES];
 
         for i in 0..n {
             black_body_normalized(&CIE_LAMBDA, N_CIE_SAMPLES, values[2 * i], &mut v);

@@ -1,5 +1,6 @@
 use structopt::StructOpt;
 use pbrt_rust::core::pbrt::{Float, Options};
+use pbrt_rust::init_stats;
 use std::path::PathBuf;
 use num_cpus;
 use anyhow::Result;
@@ -96,7 +97,7 @@ fn setup_logging(verbose: bool, logdir: PathBuf, stderr: bool) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let mut opts = Options::default();
+    let mut opts = Options::new();
     let args: Args = Args::from_args();
 
     let nthreads = match args.nthreads {
@@ -120,11 +121,13 @@ fn main() -> Result<()> {
     let logdir = if let Some(dir) = args.logdir {
         dir
     } else {
-        PathBuf::from(String::from("/"))
+        PathBuf::from(String::from("pbrt.log"))
     };
 
     setup_logging(args.verbose, logdir, args.logtostderr)?;
     let filename = args.input;
-    
+    // Initialize statistics counter
+    init_stats();
+
     pbrt_parse(&filename, opts)
 }

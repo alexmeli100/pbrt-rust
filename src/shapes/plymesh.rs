@@ -116,11 +116,14 @@ pub fn create_plymesh(
             }
         }).collect();
 
+    //println!("{:?}", indices);
+
     let mut p = Vec::with_capacity(vcount);
     let mut n = Vec::with_capacity(vcount);
     let mut uv = Vec::with_capacity(vcount);
 
     for v in vertices {
+        //println!("{:?}", v.p);
         p.push(v.p);
 
         if has_normals {
@@ -153,23 +156,25 @@ pub fn create_plymesh(
     }
 
     let mut shadow_alphatex: Option<Arc<TextureFloat>> = None;
-    let tex_name = params.find_texture("alpha", "".to_owned());
+    let tex_name = params.find_texture("shadowalpha", "".to_owned());
 
     if !tex_name.is_empty() {
         shadow_alphatex = match textures.get(&tex_name) {
             Some(t) =>  Some(t.clone()),
             _       => {
                 error!(
-                    "Couldn't find float texture \"{}\" for \"alpha\" parameter",
+                    "Couldn't find float texture \"{}\" for \"shadowalpha\" parameter",
                     tex_name
                 );
 
                 None
             }
         }
-    } else if params.find_one_float("alpha", 1.0) == 0.0 {
+    } else if params.find_one_float("shadowalpha", 1.0) == 0.0 {
         shadow_alphatex = Some(Arc::new(ConstantTexture::new(0.0).into()));
     }
+
+    //println!("{:?}", n);
 
     create_trianglemesh(
         o2w, w2o, reverse_orientation,
@@ -223,9 +228,9 @@ impl ply::PropertyAccess for Face {
 
     fn set_property(&mut self, name: String, property: Property) {
         match (name.as_str(), property) {
-            ("vertext_indices", ply::Property::ListInt(v))  =>
+            ("vertex_indices", ply::Property::ListInt(v))  =>
                 self.indices = v.iter().map(|x| *x as usize).collect(),
-            ("vertext_indices", ply::Property::ListUInt(v)) =>
+            ("vertex_indices", ply::Property::ListUInt(v)) =>
                 self.indices = v.iter().map(|x| *x as usize).collect(),
             (k, p) =>
                 error!("Face: Invalid combination key/value for key {} / prop {:?}", k, p)

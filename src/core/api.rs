@@ -1,4 +1,4 @@
-use crate::core::transform::{Transform, AnimatedTransform};
+use crate::core::transform::{Transform, AnimatedTransform, Matrix4x4};
 use std::ops::{IndexMut, Index, Deref};
 use std::sync::Arc;
 use static_assertions::{const_assert_eq};
@@ -7,7 +7,7 @@ use crate::core::paramset::{ParamSet, TextureParams};
 use std::collections::HashMap;
 use crate::core::texture::{TextureFloat, TextureSpec};
 use crate::core::pbrt::{Float, Options};
-use crate::core::spectrum::{Spectrum, SpectrumType};
+use crate::core::spectrum::{Spectrum, SpectrumType, SampledSpectrum};
 use log::{info, error, warn};
 use crate::core::medium::{Mediums, MediumInterface, get_medium_scattering_properties};
 use crate::core::light::{Lights};
@@ -90,6 +90,15 @@ use crate::samplers::halton::create_halton_sampler;
 use crate::samplers::sobol::create_sobol_sampler;
 use crate::samplers::random::create_random_sampler;
 use crate::samplers::stratified::create_stratified_sampler;
+use crate::materials::mirror::create_mirror_material;
+use crate::materials::glass::create_glass_material;
+use crate::materials::translucent::create_translucent_material;
+use crate::materials::hair::create_hair_material;
+use crate::materials::metal::create_metal_material;
+use crate::materials::substrate::create_substrate_material;
+use crate::materials::kdsubsurface::create_kdsubsurface_material;
+use crate::materials::uber::create_uber_material;
+use crate::materials::subsurface::create_subsurface_material;
 
 const MAX_TRANSFORMS: usize = 2;
 const START_TRANSFORM_BITS: usize = 1 << 0;
@@ -146,7 +155,6 @@ impl Index<usize> for TransformSet {
     type Output = Transform;
 
     fn index(&self, i: usize) -> &Self::Output {
-        assert!(i > 0);
         assert!(i < MAX_TRANSFORMS);
 
         &self.t[i]
@@ -155,7 +163,6 @@ impl Index<usize> for TransformSet {
 
 impl IndexMut<usize> for TransformSet {
     fn index_mut(&mut self, i: usize) -> &mut Self::Output {
-        assert!(i > 0);
         assert!(i < MAX_TRANSFORMS);
 
         &mut self.t[i]
@@ -396,7 +403,7 @@ impl GraphicsState {
     }
 }
 
-struct TransformCache {
+pub struct TransformCache {
     table           : Vec<Option<Arc<Transform>>>,
     table_occupancy : usize,
     arena           : Bump
@@ -409,9 +416,9 @@ impl Default for TransformCache {
 }
 
 impl TransformCache {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            table: Vec::with_capacity(512),
+            table: vec![None; 512],
             table_occupancy: 0,
             arena: Bump::new()
         }
@@ -422,7 +429,7 @@ impl TransformCache {
         let mut hash = 14695981039346656037_u64;
 
         unsafe {
-            let mut ptr = t.m.as_ptr() as  *const u8;
+            let mut ptr = t.m.m.as_ptr() as  *const u8;
 
             while size > 0 {
                 hash ^= *ptr as u64;
@@ -435,7 +442,7 @@ impl TransformCache {
         hash
     }
 
-    fn lookup(&mut self, t: &Transform) -> Arc<Transform> {
+    pub fn lookup(&mut self, t: &Transform) -> Arc<Transform> {
         ntransform_cache_hitsper::inc_den();
         let mut offset = TransformCache::hash(t) & (self.table.len() as u64 - 1);
         let mut step = 1;
@@ -499,7 +506,7 @@ impl TransformCache {
     }
 
     fn grow(table: &mut Vec<Option<Arc<Transform>>>) {
-        let mut new_table: Vec<Option<Arc<Transform>>> = Vec::with_capacity(2 * table.len());
+        let mut new_table: Vec<Option<Arc<Transform>>> = vec![None; 2 * table.len()];
         info!("Growing transform cache hash table to {}", new_table.capacity());
         let size = table.len();
 
@@ -592,10 +599,19 @@ fn make_material(name: &str, mp: &mut TextureParams, state: &GraphicsState, opts
     }
 
     let material = match name {
-        "matte"     => Some(Arc::new(create_matte_material(mp))),
-        "plastic"   => Some(Arc::new(create_plastic_material(mp))),
-        "fourier"   => Some(Arc::new(create_fourier_material(mp))),
-        "disney"    => Some(Arc::new(create_disney_material(mp))),
+        "matte"        => Some(Arc::new(create_matte_material(mp))),
+        "plastic"      => Some(Arc::new(create_plastic_material(mp))),
+        "fourier"      => Some(Arc::new(create_fourier_material(mp))),
+        "disney"       => Some(Arc::new(create_disney_material(mp))),
+        "mirror"       => Some(Arc::new(create_mirror_material(mp))),
+        "glass"        => Some(Arc::new(create_glass_material(mp))),
+        "hair"         => Some(Arc::new(create_hair_material(mp))),
+        "translucent"  => Some(Arc::new(create_translucent_material(mp))),
+        "metal"        => Some(Arc::new(create_metal_material(mp))),
+        "substrate"    => Some(Arc::new(create_substrate_material(mp))),
+        "subsurface"   => Some(Arc::new(create_subsurface_material(mp))),
+        "kdsubsurface" => Some(Arc::new(create_kdsubsurface_material(mp))),
+        "uber"         => Some(Arc::new(create_uber_material(mp))),
         "mix"       => {
             let m1 = mp.find_string("namedmaterial1", "");
             let m2 = mp.find_string("namedmaterial2", "");
@@ -622,7 +638,7 @@ fn make_material(name: &str, mp: &mut TextureParams, state: &GraphicsState, opts
         }
     };
 
-    if (name == "subsurface" || name == "kdsubsurface") ||
+    if (name == "subsurface" || name == "kdsubsurface") &&
         (opts.integrator_name != "path" &&
          (opts.integrator_name != "volpath")) {
         warn!(
@@ -898,7 +914,7 @@ pub struct API {
 
 macro_rules! verify_initialized {
     ($self:ident, $func:expr) => {{
-        if (!$self.opts.cat || $self.opts.to_ply) && $self.current_state == APIState::Uninitialized {
+        if !($self.opts.cat || $self.opts.to_ply) && $self.current_state == APIState::Uninitialized {
             error!("init() must be before calling \"{}\".\nIgnoring", $func);
             return;
         }}
@@ -907,7 +923,7 @@ macro_rules! verify_initialized {
 
 macro_rules! verify_options {
     ($self:ident, $func:expr) => {
-        if (!$self.opts.cat || $self.opts.to_ply) && $self.current_state == APIState::WorldBlock {
+        if !($self.opts.cat || $self.opts.to_ply) && $self.current_state == APIState::WorldBlock {
             error!("Options cannot be set inside world block;\n\"{}\" not allowed. Ignoring", $func);
             return;
         }
@@ -916,7 +932,7 @@ macro_rules! verify_options {
 
 macro_rules! verify_world {
     ($self:ident, $func:expr) => {
-        if (!$self.opts.cat || $self.opts.to_ply) && $self.current_state == APIState::WorldBlock {
+        if !($self.opts.cat || $self.opts.to_ply) && $self.current_state == APIState::OptionsBlock {
             error!("Scene description must be inside world block;\n\"{}\" not allowed. Ignoring", $func);
             return;
         }
@@ -961,7 +977,7 @@ impl API {
         self.indent_count = 0;
 
         // General pbrt Initialization
-        Spectrum::init();
+        SampledSpectrum::init();
     }
 
     pub fn cleanup(&mut self) {
@@ -996,7 +1012,7 @@ impl API {
 
     pub fn transform(&mut self, tr: Vec<Float>) {
         assert_eq!(tr.len(), 16);
-        let t = Transform::from_matrix(&Matrix4::from_column_slice(&tr));
+        let t = Transform::from_matrix(&Matrix4x4::from_col_slice(&tr));
         verify_initialized!(self, "Transform");
         for_active_transform!(self, t);
 
@@ -1009,7 +1025,7 @@ impl API {
 
     pub fn concat_transform(&mut self, tr: Vec<Float>) {
         assert_eq!(tr.len(), 16);
-        let t = Transform::from_matrix(&Matrix4::from_column_slice(&tr));
+        let t = Transform::from_matrix(&Matrix4x4::from_col_slice(&tr));
         verify_initialized!(self, "ConcatTransform");
         for_active_transform!(self, *t, t);
 
@@ -1446,6 +1462,7 @@ impl API {
         verify_world!(self, "LightSource");
         warn_if_animated_transform!(self, "LightSource");
         let mi = self.graphics_state.create_medium_interface(&self.render_options);
+        //println!("{:?}", self.curr_transform[0]);
         let lt = make_light(name, params, &self.curr_transform[0], mi, &self.opts);
 
         if let Some(val) = lt {
@@ -1736,7 +1753,7 @@ impl API {
         self.render_options = Default::default();
 
         if !self.opts.cat && !self.opts.to_ply {
-            // TODO: ThreadStats
+            report_stats();
             if !self.opts.quiet {
                 print_stats(std::io::stdout());
                 clear_stats();

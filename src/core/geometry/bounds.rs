@@ -1,7 +1,7 @@
 use super::point::{Point2, Point3, Point2f, Point2i, Point3f};
 use super::vector::{Vector2, Vector3};
 use crate::core::pbrt;
-use crate::core::pbrt::Float;
+use crate::core::pbrt::{Float, gamma};
 use num::{Num, Bounded};
 use std::ops::{Index, IndexMut, Mul, Add, DivAssign, Sub};
 use crate::core::geometry::ray::Ray;
@@ -517,7 +517,7 @@ impl Bounds3f {
         let c = (self.p_min + self.p_max) / 2_f32;
         let rad = match self.inside(&c) {
             true => self.p_max.distance(&c),
-            _ => 0 as Float
+            _    => 0 as Float
         };
 
         (c, rad)
@@ -543,6 +543,7 @@ impl Bounds3f {
                 std::mem::swap(&mut tnear, &mut tfar);
             }
 
+            tfar *= 1.0 + 2.0 * gamma(3);
             t0 = if tnear > t0 { tnear } else { t0 };
             t1 = if tfar < t1 { tfar } else { t1 };
 
@@ -558,21 +559,24 @@ impl Bounds3f {
     pub fn intersect_p2(&self, ray: &Ray, inv_dir: &Vector3f, dir_isneg: [usize; 3]) -> bool {
         let mut tmin = (self[dir_isneg[0]].x - ray.o.x) * inv_dir.x;
         let mut tmax = (self[1 - dir_isneg[0]].x - ray.o.x) * inv_dir.x;
-        let tymin = (self[dir_isneg[0]].y - ray.o.y) * inv_dir.y;
-        let tymax = (self[1 - dir_isneg[0]].y - ray.o.y) * inv_dir.y;
+        let tymin = (self[dir_isneg[1]].y - ray.o.y) * inv_dir.y;
+        let mut tymax = (self[1 - dir_isneg[1]].y - ray.o.y) * inv_dir.y;
 
+        tmax *= 1.0 + 2.0 * gamma(3);
+        tymax *= 1.0 + 2.0 * gamma(3);
         if tmin > tymax || tymin > tmax { return false; }
         if tymin > tmin { tmin = tymin; }
         if tymax < tmax { tmax = tymax; }
 
-        let tzmin = (self[dir_isneg[0]].z - ray.o.z) * inv_dir.z;
-        let tzmax = (self[1 - dir_isneg[0]].z - ray.o.z) * inv_dir.z;
+        let tzmin = (self[dir_isneg[2]].z - ray.o.z) * inv_dir.z;
+        let mut tzmax = (self[1 - dir_isneg[2]].z - ray.o.z) * inv_dir.z;
 
+        tzmax *= 1.0 + 2.0 * gamma(3);
         if tmin > tzmax || tzmin > tmax { return false; }
         if tzmin > tmin { tmin = tzmin; }
         if tzmax < tmax { tmax = tzmax; }
 
-        (tmin < ray.t_max) && tmax > 0.0
+        (tmin < ray.t_max) && (tmax > 0.0)
     }
 }
 

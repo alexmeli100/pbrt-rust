@@ -112,7 +112,7 @@ impl DivAssign<Float> for Quaternion {
 impl From<Transform> for Quaternion {
     fn from(t: Transform) -> Self {
         let m= t.m;
-        let trace: Float = m[(0, 0)] + m[(1, 1)] + m[(2, 2)];
+        let trace: Float = m.m[0][0] + m.m[1][1] + m.m[2][2];
 
         if trace > 0.0 {
 
@@ -122,29 +122,29 @@ impl From<Transform> for Quaternion {
 
             Self {
                 v: Vector3f::new(
-                    (m[(2, 1)] - m[(1, 2)]) * s,
-                    (m[(0, 2)] - m[(2, 0)]) * s,
-                    (m[(1, 0)] - m[(0, 1)]) * s),
+                    (m.m[2][1] - m.m[1][2]) * s,
+                    (m.m[0][2] - m.m[2][0]) * s,
+                    (m.m[1][0] - m.m[0][1]) * s),
                 w,
             }
         } else {
             // compute largest of $x$, $y$, or $z$, then remaining components
             let nxt: [usize; 3] = [1, 2, 0];
             let mut q: [Float; 3] = [0.0; 3];
-            let mut i = if m[(1, 1)] > m[(0, 0)] { 1 } else { 0 };
-            if m[(2, 2)] > m[(i, i)] {
+            let mut i = if m.m[1][1] > m.m[0][0] { 1 } else { 0 };
+            if m.m[2][2] > m.m[i][i] {
                 i = 2;
             }
             let j = nxt[i];
             let k = nxt[j];
-            let mut s: Float = ((m[(i, i)] - (m[(j ,j)] + m[(k, k)])) + 1.0).sqrt();
+            let mut s: Float = ((m.m[i][i] - (m.m[j][j] + m.m[k][k])) + 1.0).sqrt();
             q[i] = s * 0.5;
             if s != 0.0 {
                 s = 0.5 / s;
             }
-            let w: Float = (m[(k, j)] - m[(j, k)]) * s;
-            q[j] = (m[(j, i)] + m[(i, j)]) * s;
-            q[k] = (m[(k, i)] + m[(i, k)]) * s;
+            let w: Float = (m.m[k][j] - m.m[j][k]) * s;
+            q[j] = (m.m[j][i] + m.m[i][j]) * s;
+            q[k] = (m.m[k][i] + m.m[i][k]) * s;
 
             Self { v: Vector3f::new(q[0], q[1], q[2]), w, }
         }

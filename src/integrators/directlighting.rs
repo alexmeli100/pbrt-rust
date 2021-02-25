@@ -124,7 +124,8 @@ impl SamplerIntegrator for DirectLightingIntegrator {
 pub fn create_directlighting_integrator(
     params: &ParamSet, sampler: Box<Samplers>,
     camera: Arc<Cameras>) -> Option<Integrators> {
-    let maxdepth = params.find_one_int("maxdepth", 5) as usize;let mut np = 0;
+    let maxdepth = params.find_one_int("maxdepth", 5) as usize;
+    let mut np = 0;
     let pb = params.find_int("pixelbounds", &mut np);
     let mut pbounds = camera.film().get_sample_bounds();
 

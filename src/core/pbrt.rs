@@ -28,6 +28,15 @@ pub struct Options {
     pub crop_window     : [[Float; 2]; 2]
 }
 
+impl Options {
+    pub fn new() -> Self {
+        Self {
+            crop_window: [[0.0, 1.0], [0.0, 1.0]],
+            ..Default::default()
+        }
+    }
+}
+
 #[inline(always)]
 pub fn float_to_bits(f: f32) -> u32 {
     let ui: u32;

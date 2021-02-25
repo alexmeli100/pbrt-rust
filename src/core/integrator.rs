@@ -12,7 +12,7 @@ use crate::core::spectrum::Spectrum;
 use crate::core::film::Film;
 use crate::core::geometry::point::{Point2i, Point2f};
 use rayon::prelude::*;
-use log::{info, error};
+use log::{info, error, debug};
 use crate::core::pbrt::Float;
 use crate::core::light::{Light, is_delta_light};
 use crate::stat_counter;
@@ -122,7 +122,7 @@ pub fn estimate_direct(
     let mut scattpdf: Float = 0.0;
     let mut visibility = VisibilityTester::default();
     let mut Li = light.sample_li(&it.get_data(), ulight, &mut wi, &mut lightpdf, &mut visibility);
-    info!(
+    debug!(
         "EstimateDirect uLight {} -> Li: {}, wi: {}, pdf {}",
         ulight, Li, wi, lightpdf);
 
@@ -135,13 +135,13 @@ pub fn estimate_direct(
                 f = bsdf.f(&s.wo, &wi, bsdf_flags) *
                     wi.abs_dot_norm(&s.shading.n);
                 scattpdf = bsdf.pdf(&s.wo, &wi, bsdf_flags);
-                info!("  surf f*dot : {}, scatteringPdf: {}", f, scattpdf);
+                debug!("  surf f*dot : {}, scatteringPdf: {}", f, scattpdf);
             },
             Interactions::MediumInteraction(ref m) => {
                 let p = m.phase.as_ref().unwrap().p( &m.wo, &wi);
                 f = Spectrum::new(p);
                 scattpdf = p;
-                info!("  medium p: {}", p);
+                debug!("  medium p: {}", p);
             }
             _ => ()
         }
@@ -150,12 +150,12 @@ pub fn estimate_direct(
             // compute effect of visibility for light source sample
             if handle_media {
                 Li *= visibility.tr(scene, sampler);
-                info!("  after Tr, Li: {}", Li);
+                debug!("  after Tr, Li: {}", Li);
             } else if !visibility.unoccluded(scene) {
-                info!("  shadow ray blocked");
+                debug!("  shadow ray blocked");
                 Li = Spectrum::new(0.0);
             } else {
-                info!("  shadow ray unoccluded")
+                debug!("  shadow ray unoccluded")
             }
 
             // Add light's contribution to reflected radiance
@@ -193,7 +193,7 @@ pub fn estimate_direct(
             _ => ()
         }
 
-        info!("  BSDF / phase sampling f: {}, scatteringPdf: ", scattpdf);
+        debug!("  BSDF / phase sampling f: {}, scatteringPdf: ", scattpdf);
 
         if !f.is_black() && scattpdf > 0.0 {
             // Account for light contributions along sampled direction wi
@@ -276,13 +276,10 @@ pub trait SamplerIntegrator: Integrator + Send + Sync {
         let ntiles = Point2i::new(
             (sextent.x + tilesize - 1) / tilesize,
             (sextent.y + tilesize - 1) / tilesize);
-        let mut tiles = Vec::with_capacity((ntiles.x  * ntiles.y) as usize);
 
-        for y in 0..ntiles.y {
-            for x in 0..ntiles.x{
-                tiles.push(Point2i::new(x, y));
-            }
-        }
+        let tiles = (0..ntiles.x * ntiles.y)
+            .map(|i| Point2i{x: i % ntiles.x, y: i / ntiles.x})
+            .collect::<Vec<_>>();
 
         let (sendt, recvt) = bounded(tiles.len());
         let mut herd = bumpalo_herd::Herd::new();
@@ -362,7 +359,7 @@ pub trait SamplerIntegrator: Integrator + Send + Sync {
                             L = Spectrum::new(0.0);
                         }
 
-                        info!(
+                        debug!(
                             "Camera sample: {} -> ray: {} -> L = {}",
                             camera_sample, ray, L);
                         // Add camera ray's contribution to image
@@ -477,15 +474,13 @@ pub trait SamplerIntegrator: Integrator + Send + Sync {
                 // The BSDF stores the IOR of the interior of the object being
                 // intersected.  Compute the relative IOR by first out by
                 // assuming that the ray is entering the object.
-                let mut eta = 1.0 / bsdf.eta;
+                let mut eta = bsdf.eta;
+                let w = -wo;
 
                 if wo.dot_norm(&ns) < 0.0 {
                     // If the ray isn't entering, then we need to invert the
                     // relative IOR and negate the normal and its derivatives.
                     eta = 1.0 / eta;
-                    ns = -ns;
-                    dndx = -dndx;
-                    dndy = -dndy;
                 }
 
                 let dwodx = -d.rx_direction - wo;
@@ -493,12 +488,12 @@ pub trait SamplerIntegrator: Integrator + Send + Sync {
                 let ddndx = dwodx.dot_norm(&ns) + wo.dot_norm(&dndx);
                 let ddndy = dwody.dot_norm(&ns) + wo.dot_norm(&dndy);
 
-                let mu = eta * wo.dot_norm(&ns) - wi.abs_dot_norm(&ns);
-                let dmudx = (eta - (eta * eta * wo.dot_norm(&ns)) / wi.abs_dot_norm(&ns)) * ddndx;
-                let dmudy = (eta - (eta * eta * wo.dot_norm(&ns)) / wi.abs_dot_norm(&ns)) * ddndy;
+                let mu = eta * w.dot_norm(&ns) - wi.dot_norm(&ns);
+                let dmudx = (eta - (eta * eta * w.dot_norm(&ns)) / wi.dot_norm(&ns)) * ddndx;
+                let dmudy = (eta - (eta * eta * w.dot_norm(&ns)) / wi.dot_norm(&ns)) * ddndy;
 
-                let rx_direction = wi - dwodx * eta + Vector3f::from(dndx * mu + ns * dmudx);
-                let ry_direction = wi - dwody * eta + Vector3f::from(dndy * mu + ns * dmudy);
+                let rx_direction = wi + dwodx * eta - Vector3f::from(dndx * mu + ns * dmudx);
+                let ry_direction = wi + dwody * eta - Vector3f::from(dndy * mu + ns * dmudy);
                 let diff = RayDifferential {
                     rx_origin, ry_origin,
                     rx_direction, ry_direction,
@@ -507,8 +502,9 @@ pub trait SamplerIntegrator: Integrator + Send + Sync {
 
                 rd.diff = Some(diff);
             }
+            //println!("{:?}", f);
 
-            L = f * self.li(&mut rd, scene, sampler, arena, depth + 1) * wi.abs_dot_norm(&ns) / pdf
+            L = f * self.li(&mut rd, scene, sampler, arena, depth + 1) * (wi.abs_dot_norm(&ns) / pdf)
         }
 
         L

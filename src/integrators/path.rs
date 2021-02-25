@@ -24,7 +24,7 @@ use crate::core::geometry::point::Point2i;
 stat_percent!("Integrator/Zero-radiance paths", zeroradiance_total);
 stat_int_distribution!("Integrator/Path length", path_length);
 
-pub fn init() {
+pub fn init_stats() {
     zeroradiance_total::init();
     path_length::init();
 }

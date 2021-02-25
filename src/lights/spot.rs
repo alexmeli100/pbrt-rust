@@ -1,7 +1,7 @@
 use crate::core::geometry::point::{Point3f, Point2f};
 use crate::core::spectrum::Spectrum;
 use crate::core::medium::MediumInterface;
-use crate::core::transform::Transform;
+use crate::core::transform::{Transform, Matrix4x4};
 use crate::core::pbrt::{Float, radians, PI, INFINITY};
 use crate::core::light::{LightFlags, Light, VisibilityTester, Lights};
 use crate::init_light_data;
@@ -11,7 +11,6 @@ use crate::core::geometry::ray::Ray;
 use crate::core::geometry::normal::Normal3f;
 use crate::core::paramset::ParamSet;
 use std::sync::Arc;
-use nalgebra::Matrix4;
 use crate::core::sampling::{uniform_sample_cone, uniform_cone_pdf};
 use crate::core::reflection::cos_theta;
 
@@ -131,12 +130,13 @@ pub fn create_spotlight(l2w: &Transform, mi: MediumInterface, params: &ParamSet)
     let mut du = Vector3f::default();
     let mut dv = Vector3f::default();
     vec3_coordinate_system(&dir, &mut du, &mut dv);
-    let mat = Matrix4::from_row_slice(&[
+    let mat = Matrix4x4::from_row_slice(&[
         du.x,  du.y,  du.z,  0.0,
         dv.x,  dv.y,  dv.z,  0.0,
         dir.x, dir.y, dir.z, 0.0,
-        0.0,   0.0,   0.0,   0.0
+        0.0,   0.0,   0.0,   1.0
     ]);
+
     let dirtoz = Transform::from_matrix(&mat);
     let v = Vector3f::new(from.x, from.y, from.z);
     let light2world = *l2w * Transform::translate(&v) * Transform::inverse(&dirtoz);

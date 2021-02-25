@@ -141,7 +141,7 @@ impl TextureMapping2D for UVMapping2D {
     fn map(&self, si: &SurfaceInteraction,
            dstdx: &mut Vector2f, dstdy: &mut Vector2f) -> Point2f {
         // Compute texture differentials for sphere (u, v) mapping
-        *dstdx = Vector2f::new(self.su * si.dudx.get() , self.su * si.dvdx.get());
+        *dstdx = Vector2f::new(self.su * si.dudx.get() , self.sv * si.dvdx.get());
         *dstdy = Vector2f::new(self.su * si.dudy.get(), self.sv * si.dvdy.get());
 
         Point2f::new(self.su * si.uv[0] + self.du, self.sv * si.uv[1] + self.dv)

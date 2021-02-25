@@ -108,7 +108,8 @@ impl InteractionData {
         p: Point3f, n: Normal3f,  p_error: Vector3f, wo: Vector3f,
         time: Float, medium_interface: Option<MediumInterface>) -> Self {
         Self {
-            p, time, p_error, wo,
+            wo: wo.normalize(),
+            p, time, p_error,
             n, medium_interface
         }
     }
@@ -200,7 +201,7 @@ impl<'a> SurfaceInteraction<'a> {
             shape,
             shading,
             p_error: *p_error,
-            wo: *wo,
+            wo: wo.normalize(),
             p: *p,
             uv: *uv,
             dpdu: *dpdu,
@@ -402,7 +403,7 @@ impl MediumInteraction {
             phase,
             medium_interface: medium,
             p               : *p,
-            wo              : *wo,
+            wo              : wo.normalize(),
             n               : Default::default(),
             p_error         : Default::default()
         }

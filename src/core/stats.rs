@@ -29,6 +29,7 @@ macro_rules! stat_counter {
                 StatsRegisterer::register(report);
             }
 
+            #[allow(dead_code)]
             pub fn inc() {
                 let v = VALUE.get();
                 v.set(v.get() + 1);
@@ -53,6 +54,7 @@ macro_rules! stat_counter {
 macro_rules! stat_memory_counter {
     ($title:expr, $f:ident) => {
 
+        #[allow(dead_code)]
         mod $f {
             use crate::core::stats::{StatsRegisterer, StatsAccumulator};
             use state::LocalStorage;
@@ -172,7 +174,8 @@ macro_rules! stat_float_distribution {
                 MIN.get().set(f64::MAX);
                 MAX.get().set(f64::MIN);
             }
-
+            
+            #[allow(dead_code)]
             pub fn report_value(value: f64) {
                 let sum = SUM.get();
                 sum.set(sum.get() + value);
@@ -247,6 +250,7 @@ macro_rules! stat_ratio {
                 StatsRegisterer::register(report);
             }
 
+            #[allow(dead_code)]
             pub fn inc_num() {
                 let v = NUM.get();
                 v.set(v.get() + 1);
@@ -255,6 +259,12 @@ macro_rules! stat_ratio {
             pub fn inc_den() {
                 let v = DENOM.get();
                 v.set(v.get() + 1);
+            }
+
+            #[allow(dead_code)]
+            pub fn add(a: u64) {
+                let v = NUM.get();
+                v.set(v.get() + a);
             }
 
             fn report(accum: &mut StatsAccumulator) {

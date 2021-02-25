@@ -11,3 +11,7 @@ pub mod hyperboloid;
 pub mod paraboloid;
 pub mod cone;
 
+pub fn init_stats() {
+    curve::init_stats();
+}
+

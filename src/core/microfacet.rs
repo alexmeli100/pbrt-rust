@@ -268,7 +268,7 @@ fn trowbridge_reitz_sample11(
     let mut tmp = 1.0 / (A * A - 1.0);
     if tmp > 1.0e10 { tmp = 1.0e10; }
     let B = tan_theta;
-    let D = (B * B * tmp * tmp - (A * A - B * B) * tmp).max(0.0);
+    let D = ((B * B * tmp * tmp - (A * A - B * B) * tmp).max(0.0)).sqrt();
     let slopex1 = B * tmp - D;
     let slopex2 = B * tmp + D;
     *slopex = if A < 0.0 || slopex2 > 1.0 / tan_theta { slopex1 } else { slopex2 };
@@ -282,9 +282,9 @@ fn trowbridge_reitz_sample11(
         -1.0
     };
     let z =
-        (u2 * (u2 * (u2 * u2 * 0.27385 - 0.73369) + 0.46341)) /
+        (u2 * (u2 * (u2 * 0.27385 - 0.73369) + 0.46341)) /
         (u2 * (u2 * (u2 * 0.093073 + 0.309420) - 1.000000) + 0.597999);
-    *slopey = s * z * (1.0 + *slopex * *slopex);
+    *slopey = s * z * (1.0 + *slopex * *slopex).sqrt();
 
     assert!(!(*slopey).is_infinite());
     assert!(!(*slopey).is_nan());
@@ -376,7 +376,7 @@ impl MicrofacetDistribution for TrowbridgeReitzDistribution {
                 let tan_theta2 = self.alphax * self.alphax * u[0] / (1.0 - u[0]);
                 cos_theta = 1.0 / (1.0 + tan_theta2).sqrt();
             } else {
-                phi = (self.alphay / self.alphax * (2.0 * PI * u[1] + 0.5 * PI).tan()).tan();
+                phi = (self.alphay / self.alphax * (2.0 * PI * u[1] + 0.5 * PI).tan()).atan();
                 if u[1] > 0.5 { phi += PI; }
                 let sin_phi = phi.sin();
                 let cos_phi = phi.cos();

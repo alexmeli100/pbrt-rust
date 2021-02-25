@@ -122,6 +122,7 @@ mod sampling {
             let mut count = vec![0; 1 << logsamples];
 
             for s in samples.iter() {
+                println!("{:?}", s);
                 let x = nx as Float * s.x;
                 let y = ny as Float * s.y;
                 assert!(x >= 0.0);
@@ -142,16 +143,16 @@ mod sampling {
 
     #[test]
     fn elementary_intervals() {
-        for logsamples in 2..=10 {
-            let s: Samplers = MaxMinDistSampler::new(1 << logsamples, 2).into();
-            check_sampler("MaxMinDistSampler", s, logsamples);
+        for logsamples in 2..3 {
+            // let s: Samplers = MaxMinDistSampler::new(1 << logsamples, 2).into();
+            // check_sampler("MaxMinDistSampler", s, logsamples);
 
             let zts: Samplers = ZeroTwoSequenceSampler::new(1 << logsamples, 2).into();
             check_sampler("ZeroTwoSequenceSampler", zts, logsamples);
 
-            let b = Bounds2i::from_points(&Point2i::new(0, 0), &Point2i::new(10, 10));
-            let sobol: Samplers = SobolSampler::new(1 << logsamples, &b).into();
-            check_sampler("Sobol", sobol, logsamples);
+            // let b = Bounds2i::from_points(&Point2i::new(0, 0), &Point2i::new(10, 10));
+            // let sobol: Samplers = SobolSampler::new(1 << logsamples, &b).into();
+            // check_sampler("Sobol", sobol, logsamples);
         }
     }
 

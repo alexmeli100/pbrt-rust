@@ -53,8 +53,8 @@ impl PerspectiveCamera {
             Transform::scale(film.full_resolution.x as Float, film.full_resolution.y as Float, 1.0) *
             Transform::scale(
                 1.0 / (screen_window.p_max.x - screen_window.p_min.x),
-        1.0 / (screen_window.p_min.y - screen_window.p_max.y),
-        1.0) *
+                1.0 / (screen_window.p_min.y - screen_window.p_max.y),
+                1.0) *
             Transform::translate(&Vector3f::new(-screen_window.p_min.x, -screen_window.p_max.y, 0.0));
 
 
@@ -151,13 +151,13 @@ impl Camera for PerspectiveCamera {
             // Sample point on lens
             let plens =  concentric_sample_disk(&sample.plens) * self.lens_radius;
 
-            let dx = Vector3f::from(pcamera + self.dx_camera);
+            let dx = Vector3f::from(pcamera + self.dx_camera).normalize();
             let mut ft = self.focal_distance / dx.z;
             let mut pfocus = Point3f::new(0.0, 0.0, 0.0) + (dx * ft);
             diff.rx_origin = Point3f::new(plens.x, plens.y, 0.0);
             diff.rx_direction = (pfocus - diff.rx_origin).normalize();
 
-            let dy = Vector3f::from(pcamera + self.dy_camera);
+            let dy = Vector3f::from(pcamera + self.dy_camera).normalize();
             ft = self.focal_distance / dy.z;
             pfocus = Point3f::new(0.0, 0.0, 0.0) + (dy * ft);
             diff.ry_origin = Point3f::new(plens.x, plens.y, 0.0);
@@ -300,7 +300,7 @@ pub fn create_perspective_camera(
     film: Arc<Film>, medium: Option<Arc<Mediums>>) -> Option<Arc<Cameras>> {
     // Extract common camera parameters from ParamSet
     let mut shutteropen = params.find_one_float("shutteropen", 0.0);
-    let mut shutterclose = params.find_one_float("shutterclose", 0.0);
+    let mut shutterclose = params.find_one_float("shutterclose", 1.0);
 
     if shutterclose < shutteropen {
         warn!("Shutter close time [{}] < shutter open [{}]. Swapping time.",

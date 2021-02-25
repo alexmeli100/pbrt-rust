@@ -6,6 +6,7 @@ use crate::core::geometry::vector::{Vector3f, Vector2f};
 use crate::core::geometry::point::{Point3f, Point2f};
 use std::fmt::{Display, Formatter};
 use std::fmt;
+use crate::core::fileutil::{set_search_directory, directory_containing};
 use anyhow::{Result, anyhow};
 use lazy_static::lazy_static;
 use lalrpop_util::lalrpop_mod;
@@ -23,7 +24,7 @@ lazy_static! {
 }
 
 pub fn pbrt_parse<P: AsRef<Path>>(name: P, opts: Options) -> Result<()> {
-    // TODO: set search directory
+    set_search_directory(directory_containing(name.as_ref()));
     let mut api = API::default();
     api.init(opts);
 
@@ -169,17 +170,17 @@ pub fn param_item(s: String, vals: ArrayVals) -> ParamListItem {
         "bool"                  => ParamType::Bool,
         "float"                 => ParamType::Float,
         "vector2"               => ParamType::Vector2,
-        "vector3"               => ParamType::Vector3,
+        "vector3" | "vector"    => ParamType::Vector3,
         "point2"                => ParamType::Point2,
         "point3" | "point"      => ParamType::Point3,
         "normal"                => ParamType::Normal,
-        "rgb/color" | "color"   => ParamType::RGB,
+        "rgb" | "color"         => ParamType::RGB,
         "xyz"                   => ParamType::XYZ,
         "blackbody"             => ParamType::BlackBody,
         "spectrum"              => ParamType::Spectrum,
         "string"                => ParamType::String,
         "texture"               => ParamType::Texture,
-        _           => panic!("unknown parameter type {}", typ)
+        _                       => panic!("unknown parameter type {}", typ)
     };
 
     match vals {
@@ -406,23 +407,22 @@ fn add_texture(p: &mut ParamSet, name: &str, items: Vec<String>) {
 fn add_params(p: &mut ParamSet, item: ParamListItem) {
     let ty = item.param_type;
 
-    match ty {
-        ParamType::Texture | ParamType::String | ParamType::Bool => {
+    if ty == ParamType::Texture || ty == ParamType::String || ty == ParamType::Bool {
+        if item.string_values.is_none() {
             error!(
                 "Expected string parameter value for parameter \
                 \"{}\" with type \"{}\"",
                 item.name, ty);
             return;
         }
-        _ if ty != ParamType::Spectrum && item.string_values.is_some() => {
-            error!(
-                "Expected numeric parameter \
-                value for parameter \"{}\" with type \"{}\"",
-                item.name, ty);
-            return;
-        }
-        _ => {}
+    } else if ty != ParamType::Spectrum && item.string_values.is_some() {
+        error!(
+            "Expected numeric parameter \
+            value for parameter \"{}\" with type \"{}\"",
+            item.name, ty);
+        return;
     }
+
 
     let name = item.name.to_owned();
 
