@@ -305,7 +305,11 @@ impl BVHAccel {
         // partition primitives using approximate SAH
         if nprims <= 2 {
             // partition primitives into equally sized subsets
-            (self.split_equal(dim, start, end, primitive_info), false)
+            let mid = (start + end) / 2;
+            if start != end - 1 && primitive_info[end - 1].centroid[dim] < primitive_info[start].centroid[dim] {
+                primitive_info.swap(start, end - 1);
+            }
+            (mid, false)
         } else {
             // Allocate BucketInfo for SAH partition buckets
             let mut buckets = [BucketInfo::default(); NBUCKETS];
@@ -341,15 +345,20 @@ impl BVHAccel {
             }
 
             // Find bucket to split at that minimizes SAH metric
-            let (min_cost_split_bucket, min_cost) = cost[0..NBUCKETS-1].iter()
-                .enumerate()
-                .min_by(|(_, c1), (_, c2)| c1.partial_cmp(c2).unwrap_or(Equal))
-                .unwrap();
+            let mut min_cost = cost[0];
+            let mut min_cost_split_bucket = 0;
+
+            for (i, item) in cost[1..NBUCKETS - 1].iter().enumerate() {
+                if item < &min_cost {
+                    min_cost = *item;
+                    min_cost_split_bucket = i;
+                }
+            }
 
             // Split primitive at selected SAH bucket
             let leaf_cost = nprims as Float;
 
-            if nprims > self.max_prims || *min_cost < leaf_cost {
+            if nprims > self.max_prims || min_cost < leaf_cost {
                let pmid =  primitive_info[start..end].iter_mut().partition_in_place(|pi| {
                     let mut b = (NBUCKETS as Float * centroid_bounds.offset(&pi.centroid)[dim]) as usize;
 
@@ -481,7 +490,6 @@ impl BVHAccel {
             unsafe {
                 node = &mut *(nodes.add(*total_nodes));
             }
-            //println!("{}", node.n_primitives);
             *total_nodes += 1;
 
 
@@ -501,12 +509,8 @@ impl BVHAccel {
         } else {
             let mask = 1 << bit_index;
 
-            //println!("{}", morton_prims[0].primitive_index);
-
-
             // Advance to next subtree level if there's no LBVH split for this bit
             if (morton_prims[0].morton_code & mask) == (morton_prims[n_primitives - 1].morton_code & mask) {
-                //println!("{}", morton_prims[0].primitive_index);
                 return self.emit_lbvh(nodes, primitive_info, morton_prims, n_primitives, total_nodes, sender, ordered_prims_offset, bit_index - 1);
             }
 
@@ -726,6 +730,7 @@ impl Primitive for BVHAccel {
                     // Intersect ray with primitives in leaf BVH node;
                     for i in 0..node.n_primitives {
                         let prim = self.primitives[node.offset as usize + i as usize].clone();
+
                         if prim.intersect(r, isect, prim.clone()) {
                             hit = true;
                         }
