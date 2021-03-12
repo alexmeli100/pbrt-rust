@@ -1,6 +1,6 @@
 # pbrt-rust
 
-![Build Status](https://github.com/alexmeli100/pbrt-rust/actions/workflows/rust.yml/badge.svg?branch=master)
+[![Build Status](https://github.com/alexmeli100/pbrt-rust/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/alexmeli100/pbrt-rust/actions)
 
 Another implementation of PBRT in Rust based on the PBRT book and the C++ version by Matt Pharr, Wenzel Jacob:
 
