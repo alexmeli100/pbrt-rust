@@ -70,7 +70,7 @@ impl Distribution1D {
 
         if let Some(p) = pdf {
             *p = if self.func_int > 0.0 {
-                self.func[offset] / (self.func_int * self.count() as Float )
+                self.func[offset] / (self.func_int * self.count() as Float)
             } else {
                 0.0
             };
