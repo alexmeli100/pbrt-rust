@@ -136,7 +136,7 @@ impl Primitive for GeometricPrimitive {
 
         r.t_max = thit;
         isect.primitive = Some(p);
-        assert!(isect.n.dot(&isect.shading.n) >= 0.0);
+        assert!(isect.n.dot(&isect.shading.n) >= 0.0, "n: {}, shanding_n: {}", isect.n, isect.shading.n);
 
         let m = match self.medium_interface.is_medium_transition() {
             true => self.medium_interface.clone(),
