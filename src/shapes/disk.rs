@@ -111,13 +111,9 @@ impl Shape for Disk {
         let mut d_err = Vector3::default();
         let ray = self.world_to_object.transform_ray_error(r, &mut o_err, &mut d_err);
 
-        //println!("{:?}, {:?}", o_err, d_err);
-
         // compute plane intersection for disk
         // reject disk intersection for rays parallel to the disk's plane
         if ray.d.z == 0.0 { return false; }
-        //println!("{:?}", ray.d);
-
         let t_shape_hit = (self.height - ray.o.z) / ray.d.z;
 
         if t_shape_hit <= 0.0 || t_shape_hit >= ray.t_max { return false; }
@@ -125,8 +121,6 @@ impl Shape for Disk {
         // see if hit point is inside disk radii and phi_max
         let p_hit = ray.find_point(t_shape_hit);
         let dist2 = p_hit.x * p_hit.x + p_hit.y * p_hit.y;
-
-        //println!("{:?}", p_hit);
 
         if dist2 > self.radius * self.radius || dist2 < self.inner_radius * self.inner_radius {
             return false
@@ -149,7 +143,6 @@ impl Shape for Disk {
     fn sample(&self, u: &Point2f, pdf: &mut Float) -> InteractionData {
         let pd = concentric_sample_disk(u);
         let pobj = Point3f::new(pd.x * self.radius, pd.y * self.radius, self.height);
-        //println!("{:?}", pd);
         let mut it = InteractionData::default();
         it.n = (self.object_to_world.transform_normal(&Normal3f::new(0.0, 0.0, 0.1))).normalize();
         if self.reverse_orientation { it.n *= -1.0; }
