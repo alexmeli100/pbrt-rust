@@ -539,8 +539,6 @@ pub fn sobol_interval_to_index(m: u32, mut frame: u64, p: &Point2i) -> u64 {
         b >>= 1;
     }
 
-    //println!("{}", index);
-
     index
 }
 
