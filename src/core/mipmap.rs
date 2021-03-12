@@ -203,7 +203,7 @@ where T: num::Zero + Clone + Copy + Send + Sync + Mul<Float, Output=T> + AddAssi
         ntrilerp_lookups::inc();
         // TODO: ProfilePhase
         // Compute MIPMap level for trilinear filtering
-        let level = (self.levels() - 1) as Float + width.max(1.0e-8);
+        let level = (self.levels() - 1) as Float + width.max(1.0e-8).log2();
 
         // Perform trilinear interpolation at appropriate MIPMap level
         if level < 0.0 {
@@ -277,11 +277,9 @@ where T: num::Zero + Clone + Copy + Send + Sync + Mul<Float, Output=T> + AddAssi
             let center = (i as Float + 0.5) * oldres as Float / newres as Float;
             wt[i].first_texel = ((center - filter_width) + 0.5).floor() as isize;
 
-            for i in 0..4 {
-                for j in 0..4 {
-                    let pos = wt[i].first_texel as Float + j as Float + 0.5;
-                    wt[i].weight[j] = lanczos((pos - center)/ filter_width, 2.0);
-                }
+            for j in 0..4 {
+                let pos = wt[i].first_texel as Float + j as Float + 0.5;
+                wt[i].weight[j] = lanczos((pos - center) / filter_width, 2.0);
             }
 
             // Normalize filter weights for texel sampling
@@ -320,11 +318,12 @@ where T: num::Zero + Clone + Copy + Send + Sync + Mul<Float, Output=T> + AddAssi
         let t = st.y as Float * self.pyramid[level].vres() as Float - 0.5;
         let (s0, t0) = (s.floor() as isize, t.floor() as isize);
         let (ds, dt) = (s - s0 as Float, t - t0 as Float);
+        let tmp1 = *self.texel(level, s0 + 1, t0 + 1) * (ds * dt);
+        let tmp2 = *self.texel(level, s0 + 1, t0) * (ds * (1.0 - dt));
+        let tmp3 = *self.texel(level, s0, t0 + 1) * ((1.0 - ds) * dt);
+        let tmp4 = *self.texel(level, s0, t0) * ((1.0 - ds) * (1.0 - dt));
 
-        *self.texel(level, s0, t0) * (1.0 - dt) * (1.0 - ds) +
-        *self.texel(level, s0, t0 + 1) * dt * (1.0 - ds) +
-        *self.texel(level, s0 + 1, t0) * (1.0 - dt) * ds +
-        *self.texel(level, s0 + 1, t0 + 1) * dt * ds
+        tmp4 + tmp3 + tmp2 + tmp1
     }
 
     fn ewa(&self, level: usize, mut st: Point2f,

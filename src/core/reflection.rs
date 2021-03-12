@@ -1084,7 +1084,7 @@ impl<'a> BxDF for MicrofacetTransmission<'a> {
         let sqrt_denom = wo.dot(&wh) + eta * wi.dot(&wh);
         let factor = match self.mode {
             TransportMode::Radiance => 1.0 / eta,
-            _ => 1.0
+            _                       => 1.0
         };
 
         (Spectrum::new(1.0) - f) * self.t *
@@ -1179,8 +1179,8 @@ impl<'a> BxDF for FresnelBlend<'a> {
 
         wh = wh.normalize();
         let specular =
-            self.schlick_fresnel(wi.dot(&wh)) * self.distribution.d(&wh) /
-            (4.0 * wi.abs_dot(&wh) * abs_cos_theta(wi).max(abs_cos_theta(wo)));
+            self.schlick_fresnel(wi.dot(&wh)) * (self.distribution.d(&wh) /
+            (4.0 * wi.abs_dot(&wh) * abs_cos_theta(wi).max(abs_cos_theta(wo))));
 
         diffuse + specular
 
@@ -1215,8 +1215,8 @@ impl<'a> BxDF for FresnelBlend<'a> {
         if !same_hemisphere(wo, wi) { return 0.0; }
         let wh = (*wo + *wi).normalize();
         let pdf_wh = self.distribution.pdf(wo, &wh);
-
-        0.5 * abs_cos_theta(wi) * INV_PI + pdf_wh / (4.0 * wo.dot(&wh))
+        //println!("pdf_wh: {}", pdf_wh);
+        0.5 * (abs_cos_theta(wi) * INV_PI + pdf_wh / (4.0 * wo.dot(&wh)))
     }
 }
 
@@ -1269,9 +1269,6 @@ impl BxDF for FourierBSDF {
             return Spectrum::new(0.0);
         }
 
-        // println!("{:?}", weightsi);
-        // println!("{:?}", weightso);
-
         // Allocate storage to accumulate ak coefficients
         let mut ak: SmallVec<[Float; 256]> = smallvec![0.0; (self.table.nmax * self.table.nchannels) as usize];
 
@@ -1298,8 +1295,6 @@ impl BxDF for FourierBSDF {
             }
         }
 
-        //println!("{:?}", ak);
-
         // Evaluete Fourier expansion for angle phi
         let Y = (fourier(&ak, 0, nmax, cos_phi)).max(0.0);
         let mut scale = if mui != 0.0 {
@@ -1307,8 +1302,6 @@ impl BxDF for FourierBSDF {
         } else {
             0.0
         };
-
-        //println!("Y: {}, scale: {}", Y, scale);
 
         // Update scale to account for adjoint light transport
         if self.mode == TransportMode::Radiance && mui * muo > 0.0 {
@@ -1410,10 +1403,9 @@ impl BxDF for FourierBSDF {
         // all sorts of errors, including negative spectral values. Therefore,
         // we normalize again here.
         *wi = wi.normalize();
-        //println!("{:?}", wi);
+
         // Evaluate remaining Fourier expansions for angle phi
         let mut scale = if mui != 0.0 { 1.0 / mui.abs() } else { 0.0 };
-        //println!("scale: {}, mui: {}", scale, mui);
 
         if self.mode == TransportMode::Radiance && mui * muo > 0.0 {
             let eta = if mui > 0.0 { 1.0 / table.eta } else { table.eta };
@@ -1499,6 +1491,7 @@ impl<'a> Display for FourierBSDF {
     }
 }
 
+#[derive(Clone)]
 pub struct BSDF<'a>{
     pub eta     : Float,
     ns          : Normal3f,
@@ -1557,14 +1550,19 @@ impl<'a> BSDF<'a> {
         if wo.z == 0.0 { return Spectrum::new(0.0); }
 
         let reflect = wiw.dot_norm(&self.ng) * wow.dot_norm(&self.ng) > 0.0;
+        let mut res = Spectrum::new(0.0);
 
-        self.bxdfs.iter()
-            .filter(|b|
-                b.matches_flags(f) &&
-                    ((reflect && is_reflection(b.get_type())) ||
-                    (!reflect && is_transmission(b.get_type()))))
-            .map(|b| b.f(&wo, &wi))
-            .fold(Spectrum::new(0.0), |b1, b2| b1 + b2)
+        for i in 0..self.n_bxdfs {
+            let b = self.bxdfs[i];
+
+            if b.matches_flags(f) &&
+                ((reflect && is_reflection(b.get_type())) ||
+                (!reflect && is_transmission(b.get_type()))) {
+                res += b.f(&wo, &wi);
+            }
+        }
+
+        res
     }
 
     pub fn sample_f(
@@ -1621,6 +1619,7 @@ impl<'a> BSDF<'a> {
 
 
         let mut f = b.sample_f(&wo, &mut wi, &uremapped, pdf, sampled_type);
+
         debug!(
             "For wo = {}, sampled f = {}, pdf = {}, ratio = {}, wi = {}" ,
             wo, f, *pdf, (if *pdf > 0.0 { f / *pdf } else { Spectrum::new(0.0) }), wi);
