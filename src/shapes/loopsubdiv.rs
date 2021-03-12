@@ -407,14 +407,11 @@ pub fn loop_subdivide(
 
         // Update even vertex face pointers
         for (vi, vert) in verts.iter_mut().enumerate() {
-            let mut ci = -1;
-            let mut face_child = -1;
-
             let start_face = vert.start_face as usize;
             let face = &mut faces[start_face];
             let vnum = face.vnum(vi as isize) as usize;
-            ci = vert.child;
-            face_child = face.children[vnum];
+            let ci = vert.child;
+            let face_child = face.children[vnum];
 
             if ci != -1 {
                 new_vertices[ci as usize].start_face = face_child;
