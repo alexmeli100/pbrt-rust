@@ -1141,8 +1141,8 @@ fn mis_weight<'a>(
     let mut ptminus = if t > 1 { Some(&mut cvertices[t - 2]) } else { None };
 
     // Update sampled vertex for s=1 or t=1 strategy
-    let mut qs_si: Option<&mut BSDF> = None;
-    let mut pt_si: Option<&mut BSDF> = None;
+    let mut qs_si: Option<BSDF> = None;
+    let mut pt_si: Option<BSDF> = None;
     if s == 1 {
         if let Interactions::SurfaceInteraction(ref mut si) = qs.as_mut().unwrap().intr {
             qs_si = si.bsdf.take();
