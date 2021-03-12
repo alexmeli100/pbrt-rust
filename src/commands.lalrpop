@@ -137,7 +137,7 @@ WorldEnd: PBRTCommands = {
 }
 
 ReverseOrientation: PBRTCommands = {
-    "ReverseOrientation" => PBRTCommands::WorldEnd
+    "ReverseOrientation" => PBRTCommands::ReverseOrientation
 }
 
 Accelerator: PBRTCommands = {
