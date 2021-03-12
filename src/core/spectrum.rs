@@ -48,10 +48,11 @@ pub fn black_body(lambda: &[Float], n: usize, t: Float, le: &mut [Float]) {
 
     for i in 0..n {
         // compute emitted radiance for blackbody at wavelength lambda[i]
-        let l = lambda[i] * 1e-9;
+        let l = (lambda[i] as f64 * 1.0e-9 as f64) as Float;
         let lambda5 = (l * l) * (l * l) * l;
-        le[i] = ( 2.0 * h * c * c) / (lambda5 * (((h * c) / (l * kb * t)).exp() - 1.0));
-        
+        let e = ((h * c) / (l * kb * t)).exp();
+        le[i] = ( 2.0 * h * c * c) / (lambda5 * (e - 1.0));
+
         assert!(!le[i].is_nan())
     }
 }
@@ -59,7 +60,7 @@ pub fn black_body(lambda: &[Float], n: usize, t: Float, le: &mut [Float]) {
 pub fn black_body_normalized(lambda: &[Float], n: usize, t: Float, le: &mut [Float]) {
     black_body(lambda, n, t, le);
     // Normalize le values based on maximum blackbody radiance
-    let lambda_max = 2.8977721e-3 / t * 1e9;
+    let lambda_max = 2.8977721e-3 / t * 1.0e9;
     let mut maxl = [0.0; 1];
     black_body(&[lambda_max], 1, t, &mut maxl);
     
@@ -445,7 +446,6 @@ fn average_spectrum_samples(lambda: &[Float], vals: &[Float], n: usize, lambda_s
     // Add contributions of constant segments before/after samples
     if lambda_start < lambda[0] { sum += vals[0] * (lambda[0] - lambda_start); }
     if lambda_end > lambda[n - 1] { sum += vals[n - 1] * (lambda_end - lambda[n - 1]); }
-    //println!("{}", sum);
 
     // Advance to first relevant wavelength segment
     let mut i = 0;
@@ -456,20 +456,13 @@ fn average_spectrum_samples(lambda: &[Float], vals: &[Float], n: usize, lambda_s
         lerp((w - lambda[i]) / (lambda[i + 1] - lambda[i]), vals[i], vals[i + 1])
     };
 
-    //println!("{}", i);
-   // println!("{}", sum);
-
     while i + 1 < n && lambda_end >= lambda[i] {
         let seg_lambda_start = lambda_start.max(lambda[i]);
         let seg_lambda_end = lambda_end.min( lambda[i + 1]);
-        //println!("{}, {}", interp(seg_lambda_start, i), )
-        //println!("seg_start: {}, seg_end: {}, lambdai: {}, lambdai+1: {}", seg_lambda_start, seg_lambda_end, lambda[i], lambda[i + 1]);
         sum += 0.5 * (interp(seg_lambda_start, i) + interp(seg_lambda_end, i)) * (seg_lambda_end - seg_lambda_start);
         i += 1;
     }
 
-
-    //println!("{}", sum);
     sum / (lambda_end - lambda_start)
 }
 
@@ -512,7 +505,6 @@ fn reflectance_to_rgb(rgb: [Float; 3], r: &mut SampledSpectrum) {
     if rgb[0] <= rgb[1] && rgb[0] <= rgb[2] {
         // compute reflectance SampledSpectrum with rgb[0] as miniumum
         *r += *RGB_REFL2_SPEC_WHITE * rgb[0];
-        //println!("{}", r);
 
         if rgb[1] <= rgb[2] {
             *r += *RGB_REFL2_SPEC_CYAN * (rgb[1] - rgb[0]);
@@ -524,7 +516,6 @@ fn reflectance_to_rgb(rgb: [Float; 3], r: &mut SampledSpectrum) {
     } else if rgb[1] <= rgb[0] && rgb[1] <= rgb[2] {
         // compute reflectance SampledSpectrum with rgb[1] as miniumum
         *r += *RGB_REFL2_SPEC_WHITE * rgb[1];
-        //println!("{}", r);
 
         if rgb[0] <= rgb[2] {
             *r += *RGB_REFL2_SPEC_MAGENTA * (rgb[0] - rgb[1]);
@@ -536,7 +527,6 @@ fn reflectance_to_rgb(rgb: [Float; 3], r: &mut SampledSpectrum) {
     } else {
         // compute reflectance SampledSpectrum with rgb[0] as miniumum
         *r += *RGB_REFL2_SPEC_WHITE * rgb[2];
-        //println!("{}", r);
 
         if rgb[0] <= rgb[1] {
             *r += *RGB_REFL2_SPEC_YELLOW * (rgb[0] - rgb[2]);
@@ -548,7 +538,6 @@ fn reflectance_to_rgb(rgb: [Float; 3], r: &mut SampledSpectrum) {
     }
 
     *r *= 0.94;
-    //println!("{}", r);
 }
 
 fn illuminant_to_rgb(rgb: [Float; 3], r: &mut SampledSpectrum) {
