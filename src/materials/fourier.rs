@@ -42,7 +42,7 @@ impl Material for FourierMaterial {
         // Perform bump mapping with bumpMap if present
         if self.bump_map.is_some() { bump(self.bump_map.as_ref().unwrap(), si); }
 
-        let bsdf = arena.alloc(BSDF::new(si, 1.0));
+        let mut bsdf = BSDF::new(si, 1.0);
 
         // Checking for zero channels works as a proxy for checking whether the
         // table was successfully read from the file
