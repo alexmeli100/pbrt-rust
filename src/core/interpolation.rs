@@ -9,6 +9,7 @@ pub fn catmull_rom_weights(
     // Search for the interval containing x
     let idx = find_interval(size, |i| { nodes[i as usize] <= x } );
     *offset = idx - 1;
+    assert!(idx >= 0);
     let x0 = nodes[idx as usize];
     let x1 = nodes[idx as usize + 1];
 
@@ -22,8 +23,8 @@ pub fn catmull_rom_weights(
     weights[2] = -2.0 * t3 + 3.0 * t2;
 
     // Compute first node weight w0
-    if idx >= 0 {
-        let w0 = (t3 - 2.0 * t2 + t) * (x1 - x0) / (x1 - nodes[idx as usize - 1]);
+    if idx > 0 {
+        let w0 = (t3 - 2.0 * t2 + t) * (x1 - x0) / (x1 - nodes[(idx - 1) as usize]);
         weights[0] = -w0;
         weights[2] += w0;
     } else {
@@ -35,7 +36,7 @@ pub fn catmull_rom_weights(
 
     // Compute last node weight w3
     if idx + 2 < size {
-        let w3 = (t3 - t2) * (x1 - x0) / (nodes[idx as usize + 2] - x0);
+        let w3 = (t3 - t2) * (x1 - x0) / (nodes[(idx + 2) as usize] - x0);
         weights[1] -= w3;
         weights[3] = w3;
     } else {
@@ -361,8 +362,6 @@ pub fn sample_fourier(
     } else {
         u *= 2.0;
     }
-
-    //println!("flip: {}, u: {}", flip, u);
 
     let mut a = 0.0_f64;
     let mut b = PI as f64;
