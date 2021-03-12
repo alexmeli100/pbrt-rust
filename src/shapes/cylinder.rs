@@ -145,9 +145,6 @@ impl Shape for Cylinder {
         let dpdu = Vector3f::new(-self.phi_max * p_hit.y, self.phi_max * p_hit.x, 0.0);
         let dpdv = Vector3f::new(0.0, 0.0, self.zmax - self.zmin);
 
-        // println!("{:?}, {:?}", dpdu, dpdv);
-        // println!("zmin: {}, zmax: {} phimax: {}", self.zmin, self.zmax, self.phi_max);
-
         // compute cylinder dndu and dndv
         let d2pduu = Vector3f::new(p_hit.x, p_hit.y, 0.0) * self.phi_max * -self.phi_max;
         let d2pduv = Vector3f::new(0.0, 0.0, 0.0);
@@ -188,8 +185,6 @@ impl Shape for Cylinder {
         let mut o_err = Vector3::default();
         let mut d_err = Vector3::default();
         let ray = self.world_to_object.transform_ray_error(r, &mut o_err, &mut d_err);
-
-        //println!("{:?}, {:?}", o_err, d_err);
 
         // compute quadratic sphere coefficients
         // Initialize EFloat ray coordinate values
@@ -267,10 +262,7 @@ impl Shape for Cylinder {
             }
         }
 
-        //println!("{:?}", p_hit);
-
         true
-
     }
 
     fn area(&self) -> f32 {
@@ -292,8 +284,6 @@ impl Shape for Cylinder {
         let pobj_error = Vector3f::new(pobj.x, pobj.y, 0.0).abs() * gamma(3);
         it.p = self.object_to_world.transform_point_abs_error(&pobj, &pobj_error, &mut it.p_error);
         *pdf = 1.0 / self.area();
-
-        //println!("{}", pdf);
 
         it
     }
