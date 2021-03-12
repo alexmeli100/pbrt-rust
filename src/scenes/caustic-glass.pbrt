@@ -29,7 +29,7 @@ AttributeEnd
 AttributeBegin
     Material "glass" 
             "float index" [ 1.2500000000 ] 
-    Shape "plymesh" "string filename" "geometry\mesh_00001.ply"
+    Shape "plymesh" "string filename" "geometry/mesh_00001.ply"
 AttributeEnd
 
 AttributeBegin
@@ -40,7 +40,7 @@ AttributeBegin
             "rgb Ks" [ 0.1000000015 0.1000000015 0.1000000015 ] 
             "rgb Kt" [ 0 0 0 ] 
             "rgb opacity" [ 1 1 1 ] 
-    Shape "plymesh" "string filename" "geometry\mesh_00002.ply"
+    Shape "plymesh" "string filename" "geometry/mesh_00002.ply"
 AttributeEnd
 
 WorldEnd

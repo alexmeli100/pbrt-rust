@@ -19,7 +19,7 @@ AttributeBegin
 		"string mapping" "planar"
 		"vector v1" [ 1 0 0 ] "vector v2" [ 0 0 1]
 		"string aamode" ["none"]
-Texture "lines-tex" "color" "imagemap" "string filename" "textures\lines.png"
+Texture "lines-tex" "color" "imagemap" "string filename" "textures/lines.png"
 	"float uscale" [100] "float vscale" [100]
 
 	Material "matte" "texture Kd" "lines-tex"
