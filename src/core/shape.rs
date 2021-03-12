@@ -97,12 +97,10 @@ pub trait Shape {
             let mut pdf = 0.0;
             let pshape = self.sample_interaction(&re, &u, &mut pdf);
 
-            //println!("{}", pdf);
 
             let r = Ray::new(&p, &(pshape.p - *p), 0.999, 0.0, None, None);
             if pdf > 0.0 && !self.intersect_p(&r, true) {
                 solid_angle += 1.0f64 / pdf as f64;
-                //println!("{}: {}", i, pdf);
             }
         }
 
