@@ -137,6 +137,7 @@ impl Shape for Triangle {
         &self, r: &Ray, t_hit: &mut Float,
         isect: &mut SurfaceInteraction,
         test_aphatexture: bool, s: Option<Arc<Shapes>>) -> bool {
+
         // get triable vertices in p0, p1, and p2
         let [p0, p1, p2] = self.get_positions();
         // Transform triangle vertices to ray coordinate space
@@ -292,10 +293,11 @@ impl Shape for Triangle {
         let nn = Normal3f::from(dp02.cross(&dp12).normalize());
         isect.n = nn;
         isect.shading.n = nn;
+        isect.wo = -r.d;
 
         if self.reverse_orientation ^ self.transform_swapshandedness {
-            isect.n = -isect.n;
-            isect.shading.n = -isect.n;
+            isect.n = -nn;
+            isect.shading.n = -nn;
         }
 
         if !self.mesh.n.is_empty() || !self.mesh.s.is_empty() {
@@ -574,7 +576,7 @@ impl Shape for Triangle {
 
         // Compute error bounds for sampled point on triangle
         let pabs_sum = (*p0 * b[0]).abs() + (*p1 * b[1]).abs() + (*p2 * (1.0 - b[0] - b[1])).abs();
-        it.p_error = Vector3f::new(pabs_sum.x, pabs_sum.y, pabs_sum.z);
+        it.p_error = Vector3f::new(pabs_sum.x, pabs_sum.y, pabs_sum.z) * gamma(6);
         *pdf = 1.0 / self.area();
 
         it

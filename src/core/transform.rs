@@ -630,7 +630,7 @@ impl Transform {
         ret.shape = si.get_shape();
         ret.primitive = si.get_primitive();
         ret.bsdf = si.bsdf.take();
-        ret.bssrdf = si.get_bssrdf();
+        ret.bssrdf = si.bssrdf.take();
 
         ret
     }
@@ -740,12 +740,9 @@ impl AnimatedTransform {
             c5: [DerivativeTerm::default(); 3]
         };
 
-        //println!("starttime: {}", start_time);
-
         Self::decompose(&res.start_transform.m, &mut res.t[0], &mut res.r[0], &mut res.s[0]);
         Self::decompose(&res.end_transform.m, &mut res.t[1], &mut res.r[1], &mut res.s[1]);
 
-        //println!("endtime: {}", start_time);
         // Flip R1[1] if needed to select shortest path
         if res.r[0].dot(&res.r[1]) < 0.0 { res.r[1] = -res.r[1]; }
         res.has_rotation = res.r[0].dot(&res.r[1]) < 0.9995;
