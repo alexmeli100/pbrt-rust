@@ -51,7 +51,7 @@ impl GonioPhotometricLight {
     }
 
     fn scale(&self, w: &Vector3f) -> Spectrum {
-        let mut wp = self.world_to_light.transform_vector(w);
+        let mut wp = self.world_to_light.transform_vector(w).normalize();
         std::mem::swap(&mut wp.y, &mut wp.z);
         let theta = spherical_theta(&wp);
         let phi = spherical_phi(&wp);

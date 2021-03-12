@@ -57,8 +57,6 @@ impl InfiniteAreaLight {
             no_texels!()
         };
 
-
-
         let map = mipmap!(&res, s);
 
         // TODO: Initialize distribution
@@ -95,7 +93,7 @@ impl InfiniteAreaLight {
         };
 
         // Initalize Light data
-        let flags = LightFlags::DeltaPosition as u8;
+        let flags = LightFlags::Infinite as u8;
         init_light_data!(il, flags, nsamples, MediumInterface::default(), l2w);
 
         il
@@ -213,11 +211,12 @@ impl Light for InfiniteAreaLight {
         *pdf_dir = if sin_theta == 0.0 {
             0.0
         } else {
-            mappdf / (2.0 / PI * PI * sin_theta)
+            mappdf / (2.0 * PI * PI * sin_theta)
         };
         *pdf_pos = 1.0 / (PI * *wr * *wr);
+        let rgb = &self.map.lookup(&uv, 0.0);
 
-        Spectrum::from_rgb_spectrum(&self.map.lookup(&uv, 0.0), SpectrumType::Illuminant)
+        Spectrum::from_rgb_spectrum(&rgb, SpectrumType::Illuminant)
 
     }
 

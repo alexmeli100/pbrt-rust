@@ -45,7 +45,7 @@ impl SpotLight {
     }
 
     pub fn falloff(&self, w: &Vector3f) -> Float {
-        let wl = self.world_to_light.transform_vector(w);
+        let wl = self.world_to_light.transform_vector(w).normalize();
         let cos_theta = wl.z;
 
         if cos_theta < self.cos_total_width { return 0.0; }
@@ -82,7 +82,7 @@ impl Light for SpotLight {
 
         *vis = VisibilityTester::new(re.clone(), s2);
 
-        self.I * self.falloff(&(-*wi)) / self.plight.distance_squared(&re.p)
+        self.I * self.falloff(&-*wi) / self.plight.distance_squared(&re.p)
     }
 
     fn sample_le(
