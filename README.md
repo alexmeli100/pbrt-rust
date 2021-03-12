@@ -78,6 +78,14 @@ You can find other implementations of PBRT in rust here
 * https://github.com/wahn/rs_pbrt (Very well documented)
 * https://github.com/abusch/rustracer
 
+## License
+
+Licensed under either of
+
+ * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or
+   http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
 
 
 [jay-artist]:           https://www.blendswap.com/user/Jay-Artist
