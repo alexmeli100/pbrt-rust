@@ -110,7 +110,7 @@ impl SamplerIntegrator for PathIntegrator {
                     debug!("Added Le -> L = {}", L);
                 } else {
                     for light in scene.infinite_lights.iter() {
-                        L += light.le(&ray);
+                        L += light.le(&ray) * beta;
                     }
                     debug!("Added infinite area lights -> L = {}", L);
                 }
@@ -124,7 +124,7 @@ impl SamplerIntegrator for PathIntegrator {
             if isect.bsdf.is_none() {
                 debug!("Skipping intersection due to null bsdf");
                 ray = isect.spawn_ray(&ray.d);
-                bounces -= 1;
+                //bounces -= 1;
                 continue
             }
 
@@ -137,7 +137,7 @@ impl SamplerIntegrator for PathIntegrator {
             let i: Interactions = isect.into();
             if nc > 0 {
                 zeroradiance_total::inc_den();
-                let Ld = uniform_sample_onelight(&i, scene, arena, sampler, false, Some(&distrib));
+                let Ld = beta * uniform_sample_onelight(&i, scene, arena, sampler, false, Some(&distrib));
                 debug!("Sampled direct lighting Ld = {}", Ld);
                 if Ld.is_black() { zeroradiance_total::inc_num(); }
                 assert!(Ld.y() >= 0.0);
@@ -152,6 +152,7 @@ impl SamplerIntegrator for PathIntegrator {
             isect = i.get_surfaceinteraction();
             bsdf = isect.bsdf.as_ref().unwrap();
             let ty = BxDFType::All as u8;
+
             let f = bsdf.sample_f(&wo, &mut wi, &sampler.get_2d(), &mut pdf, ty, &mut flags);
             debug!("Sampled BSDF, f = {}, pdf = {}", f, pdf);
 
@@ -177,7 +178,9 @@ impl SamplerIntegrator for PathIntegrator {
                 // Importance sample the BSSRDF
                 let mut pi = SurfaceInteraction::default();
                 let bssrdf = isect.bssrdf.as_ref().unwrap();
-                let S = bssrdf.sample_s(scene, sampler.get_1d(), &sampler.get_2d(), arena, &mut pi, &mut pdf);
+                let s2 = sampler.get_2d();
+                let s1 = sampler.get_1d();
+                let S = bssrdf.sample_s(scene, s1, &s2, arena, &mut pi, &mut pdf);
                 assert!(!(beta.y().is_infinite()));
                 if S.is_black() || pdf == 0.0 { break; }
                 beta *= S / pdf;
