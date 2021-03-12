@@ -116,14 +116,11 @@ pub fn create_plymesh(
             }
         }).collect();
 
-    //println!("{:?}", indices);
-
     let mut p = Vec::with_capacity(vcount);
     let mut n = Vec::with_capacity(vcount);
     let mut uv = Vec::with_capacity(vcount);
 
     for v in vertices {
-        //println!("{:?}", v.p);
         p.push(v.p);
 
         if has_normals {
@@ -173,8 +170,6 @@ pub fn create_plymesh(
     } else if params.find_one_float("shadowalpha", 1.0) == 0.0 {
         shadow_alphatex = Some(Arc::new(ConstantTexture::new(0.0).into()));
     }
-
-    //println!("{:?}", n);
 
     create_trianglemesh(
         o2w, w2o, reverse_orientation,
