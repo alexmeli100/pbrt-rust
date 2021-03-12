@@ -159,8 +159,8 @@ pub struct SurfaceInteraction<'a> {
     pub shape               : Option<Arc<Shapes>>,
     pub shading             : Shading,
     pub primitive           : Option<Arc<Primitives>>,
-    pub bsdf                : Option<&'a mut BSDF<'a>>,
-    pub bssrdf              : Option<&'a BSSRDFs>,
+    pub bsdf                : Option<BSDF<'a>>,
+    pub bssrdf              : Option<BSSRDFs>,
     pub dpdx                : Cell<Vector3f>,
     pub dpdy                : Cell<Vector3f>,
     pub dudx                : Cell<Float>,
@@ -247,10 +247,6 @@ impl<'a> SurfaceInteraction<'a> {
 
     pub fn get_shape(&self) -> Option<Arc<Shapes>> {
         self.shape.clone()
-    }
-
-    pub fn get_bssrdf(&self) -> Option<&'a BSSRDFs> {
-        self.bssrdf
     }
 
     pub fn get_primitive(&self) -> Option<Arc<Primitives>> {
