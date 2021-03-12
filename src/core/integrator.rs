@@ -2,9 +2,10 @@ use enum_dispatch::enum_dispatch;
 use crate::core::scene::Scene;
 use bumpalo::core_alloc::sync::Arc;
 use crossbeam::crossbeam_channel::bounded;
+use indicatif::{ProgressBar, ProgressStyle};
 use crate::core::camera::{Cameras, Camera};
 use crate::core::sampler::{Samplers, Sampler};
-use crate::core::geometry::bounds::{Bounds2i};
+use crate::core::geometry::bounds::{Bounds2i, Bounds3i};
 use bumpalo_herd::Member;
 use crate::core::geometry::ray::{Ray, RayDifferential};
 use crate::core::interaction::{SurfaceInteraction, Interactions, Interaction};
@@ -13,7 +14,7 @@ use crate::core::film::Film;
 use crate::core::geometry::point::{Point2i, Point2f};
 use rayon::prelude::*;
 use log::{info, error, debug};
-use crate::core::pbrt::Float;
+use crate::core::pbrt::{Float, set_progress_bar};
 use crate::core::light::{Light, is_delta_light};
 use crate::stat_counter;
 use crate::core::light::{Lights, VisibilityTester};
@@ -91,7 +92,7 @@ pub fn uniform_sample_onelight(
         lightnum = d.sample_discrete(sampler.get_1d(), Some(&mut lightpdf), None);
         if lightpdf == 0.0 { return Spectrum::new(0.0); }
     }  else {
-        lightnum = std::cmp::min(sampler.get_1d() as usize * nlights, nlights - 1);
+        lightnum = std::cmp::min((sampler.get_1d() * nlights as Float) as usize, nlights - 1);
         lightpdf = 1.0 / nlights as Float;
     }
 
@@ -228,7 +229,7 @@ pub fn estimate_direct(
             } else {
                 li = light.le(&ray);
             }
-            if !li.is_black() { Ld += f * Li * Tr * weight / scattpdf; }
+            if !li.is_black() { Ld += f * li * Tr * weight / scattpdf; }
         }
     }
 
@@ -278,22 +279,24 @@ pub trait SamplerIntegrator: Integrator + Send + Sync {
             (sextent.y + tilesize - 1) / tilesize);
 
         let tiles = (0..ntiles.x * ntiles.y)
-            .map(|i| Point2i{x: i % ntiles.x, y: i / ntiles.x})
+            .map(|i| Point2i::new(i % ntiles.x, i / ntiles.x))
             .collect::<Vec<_>>();
 
+        let pb = Arc::new(ProgressBar::new(tiles.len() as _));
+        pb.set_style(ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] [{wide_bar}] {percent}% [{pos}/{len}] ({eta})"));
+        set_progress_bar(Some(Arc::downgrade(&pb)));
+
         let (sendt, recvt) = bounded(tiles.len());
-        let mut herd = bumpalo_herd::Herd::new();
 
         // TODO: Progress reporter
-        tiles.
-            par_iter()
+        tiles
+            .par_iter()
             .for_each(|Point2i { x, y }| {
                 let tiles = sendt.clone();
                 // Render section of image corresponding to tile
 
                 // Allocate MemoryArena for tile
-                let mut arena = herd.get();
-
                 // Get sampler instance for tile
                 let seed = y * ntiles.x + x;
                 let mut tile_sampler = Sampler::clone(&*sampler, seed);
@@ -306,68 +309,74 @@ pub trait SamplerIntegrator: Integrator + Send + Sync {
                 let p1 = Point2i::new(x0, y0);
                 let p2 = Point2i::new(x1, y1);
                 let tile_bounds = Bounds2i::from_points(&p1, &p2);
-                info!("Starting image tile {}", tile_bounds);
+                println!("Starting image tile {}", tile_bounds);
 
                 // Get FilmTile for tile
                 let mut film_tile = film.get_film_tile(&tile_bounds);
 
                 // Loop over pixels in tile to render them
-                for pixel in &tile_bounds {
-                    // TODO: ProfilePhase
-                    tile_sampler.start_pixel(&pixel);
+                {
+                    for pixel in &tile_bounds {
+                        // TODO: ProfilePhase
+                        tile_sampler.start_pixel(&pixel);
 
-                    // Do this check after the start_pixel() call; this keeps
-                    // the usage of RNG values from (most) sampler that use
-                    // RNGs consistent, which improves reproducability /
-                    // debugging.
-                    if !bounds.inside_exclusive(&pixel) { continue; }
+                        // Do this check after the start_pixel() call; this keeps
+                        // the usage of RNG values from (most) sampler that use
+                        // RNGs consistent, which improves reproducability /
+                        // debugging.
+                        if !bounds.inside_exclusive(&pixel) { continue; }
+                        let mut herd = bumpalo_herd::Herd::new();
 
-                    loop {
-                        // Initialize CameraSample for current sample
-                        let camera_sample = tile_sampler.get_camera_sample(&pixel);
+                        loop {
+                            {
+                                let arena = herd.get();
+                                // Initialize CameraSample for current sample
+                                let camera_sample = tile_sampler.get_camera_sample(&pixel);
 
-                        // Generate camera ray for current sample
-                        let mut ray = Ray::default();
-                        let ray_weight = camera.generate_ray_differential(&camera_sample, &mut ray);
-                        ray.scale_differential(1.0 / (tile_sampler.samples_per_pixel() as Float).sqrt());
-                        ncamera_rays::inc();
+                                // Generate camera ray for current sample
+                                let mut ray = Ray::default();
+                                let ray_weight = camera.generate_ray_differential(&camera_sample, &mut ray);
+                                ray.scale_differential(1.0 / (tile_sampler.samples_per_pixel() as Float).sqrt());
+                                ncamera_rays::inc();
 
-                        // Evaluate radiance along camera ray
-                        let mut L = Spectrum::new(0.0);
-                        if ray_weight > 0.0 {
-                            L = self.li(&mut ray, scene, &mut tile_sampler, &arena, 0);
+                                // Evaluate radiance along camera ray
+                                let mut L = Spectrum::new(0.0);
+                                if ray_weight > 0.0 {
+                                    L = self.li(&mut ray, scene, &mut tile_sampler, &arena, 0);
+                                }
+
+                                // Issue warning if unexpected radiance value returned
+                                if L.has_nans() {
+                                    error!(
+                                        "Not-a-number radiance value returned \
+                                        for pixel ({}, {}), sample {}. Setting to black",
+                                        x, y, tile_sampler.current_sample_number());
+                                    L = Spectrum::new(0.0);
+                                } else if L.y() < -1.0e-5 {
+                                    error!(
+                                        "Negative luminance value, {}, returned \
+                                        for pixel ({}, {}), sample {}. Setting to black.",
+                                        L.y(), x, y, tile_sampler.current_sample_number());
+                                    L = Spectrum::new(0.0);
+                                } else if L.y().is_infinite() {
+                                    error!(
+                                        "Infinite luminance value returned \
+                                        for pixel ({}, {}), sample {}. Setting to black.",
+                                        x, y, tile_sampler.current_sample_number());
+                                    L = Spectrum::new(0.0);
+                                }
+
+                                debug!(
+                                    "Camera sample: {} -> ray: {} -> L = {}",
+                                    camera_sample, ray, L);
+                                // Add camera ray's contribution to image
+                                film_tile.add_sample(&camera_sample.pfilm, L, ray_weight);
+
+                                if !tile_sampler.start_next_sample() { break; }
+                            }
+                            // Free MemoryArena memory from computing image sample value
+                            herd.reset();
                         }
-
-                        // Issue warning if unexpected radiance value returned
-                        if L.has_nans() {
-                            error!(
-                                "Not-a-number radiance value returned \
-                                for pixel ({}, {}), sample {}. Setting to black",
-                                x, y, tile_sampler.current_sample_number());
-                            L = Spectrum::new(0.0);
-                        } else if L.y() < -1.0e-5 {
-                            error!(
-                                "Negative luminance value, {}, returned \
-                                for pixel ({}, {}), sample {}. Setting to black.",
-                                L.y(), x, y, tile_sampler.current_sample_number());
-                            L = Spectrum::new(0.0);
-                        } else if L.y().is_infinite() {
-                            error!(
-                                "Infinite luminance value returned \
-                                for pixel ({}, {}), sample {}. Setting to black.",
-                                x, y, tile_sampler.current_sample_number());
-                            L = Spectrum::new(0.0);
-                        }
-
-                        debug!(
-                            "Camera sample: {} -> ray: {} -> L = {}",
-                            camera_sample, ray, L);
-                        // Add camera ray's contribution to image
-                        film_tile.add_sample(&camera_sample.pfilm, L, ray_weight);
-
-                        // Free MemoryArena memory from computinf image sample value
-
-                        if !tile_sampler.start_next_sample() { break; }
                     }
                 }
 
@@ -375,9 +384,8 @@ pub trait SamplerIntegrator: Integrator + Send + Sync {
 
                 // Send image tile to main thead for merging
                 tiles.send(film_tile).unwrap();
+                pb.inc(1);
             });
-
-        herd.reset();
 
         // Merge film tiles in main thread
         for _ in 0..tiles.len() {
@@ -387,6 +395,7 @@ pub trait SamplerIntegrator: Integrator + Send + Sync {
         }
 
         info!("Rendering finished");
+        pb.finish_and_clear();
 
         // Save final image after rendering
         film.write_image(1.0).unwrap();
@@ -456,7 +465,7 @@ pub trait SamplerIntegrator: Integrator + Send + Sync {
         let ty = BxDFType::Transmission as u8 | BxDFType::Specular as u8;
         let f = bsdf.sample_f(&wo, &mut wi, &sampler.get_2d(), &mut pdf, ty, &mut 0);
         let mut L = Spectrum::new(0.0);
-        let mut ns = isect.shading.n;
+        let ns = isect.shading.n;
 
         if pdf > 0.0 && !f.is_black() && wi.abs_dot_norm(&ns) != 0.0 {
             // Compute ray differential rd for specular transmission
@@ -466,9 +475,9 @@ pub trait SamplerIntegrator: Integrator + Send + Sync {
                 let rx_origin = *p + isect.dpdx.get();
                 let ry_origin = *p + isect.dpdy.get();
 
-                let mut dndx = isect.shading.dndu * isect.dudx.get() +
+                let dndx = isect.shading.dndu * isect.dudx.get() +
                                         isect.shading.dndv * isect.dvdx.get();
-                let mut dndy = isect.shading.dndu * isect.dudy.get() +
+                let dndy = isect.shading.dndu * isect.dudy.get() +
                                         isect.shading.dndv * isect.dvdy.get();
 
                 // The BSDF stores the IOR of the interior of the object being
@@ -502,7 +511,6 @@ pub trait SamplerIntegrator: Integrator + Send + Sync {
 
                 rd.diff = Some(diff);
             }
-            //println!("{:?}", f);
 
             L = f * self.li(&mut rd, scene, sampler, arena, depth + 1) * (wi.abs_dot_norm(&ns) / pdf)
         }

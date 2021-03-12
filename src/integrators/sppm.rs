@@ -2,7 +2,7 @@ use crate::{stat_ratio, stat_counter, stat_int_distribution, stat_memory_counter
 use crate::core::geometry::point::{Point3f, Point2i, Point3i, Point2f};
 use crate::core::geometry::vector::Vector3f;
 use crate::core::spectrum::Spectrum;
-use crate::core::pbrt::{Float, clamp, lerp, PI, Options};
+use crate::core::pbrt::{Float, clamp, lerp, PI, Options, set_progress_bar};
 use crate::core::reflection::{BSDF, BxDFType};
 use crate::core::parallel::AtomicFloat;
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -25,6 +25,7 @@ use crate::core::material::{TransportMode};
 use crate::core::lowdiscrepancy::radical_inverse;
 use crate::core::geometry::normal::Normal3f;
 use crate::core::paramset::ParamSet;
+use indicatif::{ProgressBar, ProgressStyle};
 use log::info;
 
 stat_ratio!(
@@ -76,7 +77,6 @@ impl Integrator for SPPMIntegrator {
     fn render(&mut self, scene: &Scene) {
         // TODO: ProfilePhase
         // Initiliaze pixelBounds and pixels array for SPPM
-
         let film: Arc<Film> = self.camera.film();
         let camera = &self.camera;
         let pbounds = film.cropped_pixel_bounds;
@@ -105,12 +105,18 @@ impl Integrator for SPPMIntegrator {
             .map(|i| Point2i{x: i % ntiles.x, y: i / ntiles.x})
             .collect::<Vec<_>>();
 
+        let pb = Arc::new(ProgressBar::new(self.niterations as _));
+        pb.set_style(ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] [{wide_bar}] {percent}% [{pos}/{len}]"));
+        set_progress_bar(Some(Arc::downgrade(&pb)));
+        pb.tick();
+        info!("Rending image...");
+
         // TODO ProgressReporter
         for iter in 0..self.niterations {
             let mut herd = Herd::new();
-            let mut bsdfs: Vec<Option<&BSDF>> = vec![None; npixels];
-            //let mut vps = Vec::with_capacity(npixels);
-            info!("Current iteration: {}", iter);
+            let mut bsdfs: Vec<Option<BSDF>> = vec![None; npixels];
+
             {
                 let (sendt, recvt) = bounded(tiles.len());
 
@@ -119,7 +125,6 @@ impl Integrator for SPPMIntegrator {
                     .par_iter()
                     .for_each_init(|| herd.get(), |arena, Point2i { x, y }| {
                         let sendtx = sendt.clone();
-                        //let arena = herd.get();
                         let mut pixs = Vec::new();
                         let tidx = y * ntiles.x + x;
                         let mut tsampler = sampler.clone(tidx);
@@ -153,7 +158,7 @@ impl Integrator for SPPMIntegrator {
                             let mut Ld = Spectrum::default();
                             let mut vispoint = VisiblePoint::default();
                             let mut specular_bounce = false;
-                            let mut vis_bsdf: Option<&BSDF> = None;
+                            let mut vis_bsdf: Option<BSDF> = None;
 
                             //info!("Processing pixel: {}", ppixel);
                             for depth in 0..self.max_depth {
@@ -234,18 +239,22 @@ impl Integrator for SPPMIntegrator {
                         sendtx.send(pixs).unwrap();
                     });
 
-            for _i in 0..tiles.len() {
-                let tile = recvt.recv().unwrap();
-                for (offset, ld, vp, bsdf) in tile {
-                    bsdfs[offset as usize] = bsdf;
-                    let pixel = &mut pixels[offset as usize];
-                    pixel.ld += ld;
-                    pixel.vp = vp;
+                for _i in 0..tiles.len() {
+                    let tile = recvt.recv().unwrap();
+                    for (offset, ld, vp, bsdf) in tile {
+                        bsdfs[offset as usize] = bsdf;
+                        let pixel = &mut pixels[offset as usize];
+
+                        // if iter == 199 {
+                        //     println!("{:?}", ld);
+                        // }
+                        //println!("{:?}", vp.beta);
+
+                        pixel.ld += ld;
+                        pixel.vp = vp;
+                    }
                 }
             }
-        }
-
-            info!("Finished pixels for iteration: {}", iter);
 
             // Create grid of all SPPM visible points
             let mut gridres = [0; 3];
@@ -275,11 +284,11 @@ impl Integrator for SPPMIntegrator {
                 // Compute resolution of SPPM grid in each dimension
                 let diag = grid_bounds.diagonal();
                 let maxdiag = diag.max_component();
-                let base_grid_res = (maxdiag / max_radius) as isize;
+                let base_grid_res = (maxdiag / max_radius).floor() as isize;
                 assert!(base_grid_res > 0);
 
                 for (i, res) in gridres.iter_mut().enumerate() {
-                    *res = std::cmp::max((base_grid_res as Float * diag[i] / maxdiag) as isize, 1);
+                    *res = std::cmp::max((base_grid_res as Float * diag[i] / maxdiag).floor() as isize, 1);
                 }
 
                 pixels
@@ -355,6 +364,9 @@ impl Integrator for SPPMIntegrator {
                             camera.shutter_open(), camera.shutter_close());
                         haltondim += 5;
 
+                        // if index == 3195 {
+                        //     println!("true");
+                        // }
                         // Generate photonRay from light source and initialize beta
                         let mut photon_ray = Ray::default();
                         let mut nlight = Normal3f::default();
@@ -368,7 +380,7 @@ impl Integrator for SPPMIntegrator {
 
                         let mut beta =
                             (le * nlight.abs_dot_vec(&photon_ray.d)) /
-                                (light_pdf * pdfpos * pdfdir);
+                            (light_pdf * pdfpos * pdfdir);
 
                         if beta.is_black() { return; }
 
@@ -398,6 +410,8 @@ impl Integrator for SPPMIntegrator {
                                         // Update pixel Phi and M for nearby photon
                                         let wi = -photon_ray.d;
                                         let bsdf = bsdfs[pixel.vp.bsdf].as_ref().unwrap();
+
+
                                         let phi = beta * bsdf.f(&pixel.vp.wo, &wi, BxDFType::All as u8);
                                         for i in 0..Spectrum::n() {
                                             pixel.phi[i].add(phi[i]);
@@ -452,9 +466,6 @@ impl Integrator for SPPMIntegrator {
             }
             std::mem::drop(grid);
             herd.reset();
-            info!("Finished photons per iteration");
-
-
 
             // Update pixel values from this pass's photons
             {
@@ -474,6 +485,7 @@ impl Integrator for SPPMIntegrator {
                                 phi[j] = Float::from(&p.phi[j]);
                             }
                             p.tau = (p.tau + p.vp.beta * phi) * (rnew * rnew) / (p.radius * p.radius);
+                            // println!("tau: {:?}, beta: {:?}, phi: {:?}, rnew: {}, rad: {}, p: {:?}", p.tau, p.vp.beta, phi, rnew, p.radius, p.vp.p);
                             p.n = nnew;
                             p.radius = rnew;
                             p.m.store(0, Ordering::Relaxed);
@@ -504,6 +516,7 @@ impl Integrator for SPPMIntegrator {
                             &pixels[(y - pbounds.p_min.y as usize) * (x1 - x0) + (x - x0)];
                         let mut L = pixel.ld / (iter + 1) as Float;
                         L += pixel.tau / (Np as Float * PI * pixel.radius * pixel.radius);
+                        //println!("{:?}", pixel.tau);
                         image[offset] = L;
                         offset += 1;
                     }
@@ -513,8 +526,12 @@ impl Integrator for SPPMIntegrator {
                 film.write_image(1.0).unwrap();
                 // TODO: Write SPPM radius image if requested
             }
-        }
 
+            herd.reset();
+            pb.inc(1);
+        }
+        pb.finish_and_clear();
+        info!("Rendering finished");
     }
 }
 
@@ -596,7 +613,7 @@ pub fn create_sppm_integrator(params: &ParamSet, camera: Arc<Cameras>, opts: &Op
     let mut niterations = params.find_one_int("iterations", numi);
     let maxdepth = params.find_one_int("maxdepth", 5);
     let photons_per_iter = params.find_one_int("photonsperiteration", -1);
-    let writefreq = params.find_one_int("imagewritefrequency", 1 << 31);
+    let writefreq = params.find_one_int("imagewritefrequency", 200);
     let radius = params.find_one_float("radius", 1.0);
 
     if opts.quick_render { niterations = std::cmp::max(1, niterations / 16); }

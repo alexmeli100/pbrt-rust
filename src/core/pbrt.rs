@@ -2,7 +2,23 @@ use std::ops::{Sub, Add, Mul, BitAnd};
 
 use num::{One, Zero};
 use num::traits::Pow;
+use std::sync::{Arc, Weak};
 use std::path::PathBuf;
+use lazy_static::lazy_static;
+use indicatif::ProgressBar;
+use parking_lot::RwLock;
+
+lazy_static! {
+    static ref PB: RwLock<Option<Weak<ProgressBar>>> = RwLock::new(None);
+}
+
+pub fn set_progress_bar(pb: Option<Weak<ProgressBar>>) {
+    *PB.write() = pb;
+}
+
+pub fn get_progress_bar() -> Option<Arc<ProgressBar>> {
+    PB.read().as_ref()?.upgrade()
+}
 
 pub type Float = f32;
 

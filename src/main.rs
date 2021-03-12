@@ -1,11 +1,13 @@
 use structopt::StructOpt;
-use pbrt_rust::core::pbrt::{Float, Options};
+use pbrt_rust::core::pbrt::{Float, Options, get_progress_bar};
 use pbrt_rust::init_stats;
 use std::path::PathBuf;
 use num_cpus;
 use anyhow::Result;
 use fern::colors::{ColoredLevelConfig, Color};
 use pbrt_rust::pbrtparser::pbrtparser::pbrt_parse;
+use fern::Output;
+use std::io::Write;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "pbrt")]
@@ -76,6 +78,7 @@ fn setup_logging(verbose: bool, logdir: PathBuf, stderr: bool) -> Result<()> {
             ))
         })
         .chain(fern::log_file(logdir)?);
+
     let stderr_config = fern::Dispatch::new()
         .format(move |out, message, record| {
             out.finish(format_args!(
@@ -86,7 +89,16 @@ fn setup_logging(verbose: bool, logdir: PathBuf, stderr: bool) -> Result<()> {
             ));
         })
         .level(level)
-        .chain(std::io::stderr());
+        .chain(
+            Output::call(|record| {
+                if let Some(pb) = get_progress_bar() {
+                    pb.println(record.args().to_string());
+                } else {
+                    writeln!(std::io::stderr(), "{}", record.args()).ok();
+                }
+            })
+
+        );
 
     base_config = base_config.chain(file_config);
     if stderr { base_config = base_config.chain(stderr_config); }
