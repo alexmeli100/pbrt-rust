@@ -51,8 +51,6 @@ impl MaxMinDistSampler {
         let cindex = log2_int64(spp as i64);
         assert!(cindex >= 0 && cindex < 17);
 
-        //println!("{}", cindex);
-
         let mut maxmin = MaxMinDistSampler {
             cpixel: &CMAX_MIN_DIST[cindex as usize],
             current_pixel: Default::default(),
