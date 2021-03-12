@@ -23,7 +23,7 @@ macro_rules! measure_ss {
         MeasureSS {
             name            : $name,
             sigma_prime_s   : $ss,
-            sigma_a         : $ss
+            sigma_a         : $sa
         }
     }}
 }
