@@ -38,7 +38,7 @@ pub fn spherical_direction_basis(sin_theta: Float, cos_theta: Float, phi: Float,
 }
 #[inline]
 pub fn spherical_theta(v: &Vector3f) -> Float {
-    clamp(v.z, -1.0, -1.0).acos()
+    clamp(v.z, -1.0, 1.0).acos()
 }
 
 #[inline]
