@@ -1,7 +1,7 @@
 use crate::core::pbrt::{Float, INFINITY};
 use std::sync::Arc;
 use crate::core::texture::{TextureSpec, TextureFloat, Texture};
-use crate::core::bssrdf::{BSSRDFTable, compute_beam_diffusion_bssrdf, BSSRDFs, TabulatedBSSRDF};
+use crate::core::bssrdf::{BSSRDFTable, compute_beam_diffusion_bssrdf, TabulatedBSSRDF};
 use crate::core::material::{Material, Materials, TransportMode, bump};
 use log::warn;
 use crate::core::interaction::SurfaceInteraction;
@@ -59,7 +59,7 @@ impl Material for SubsurfaceMaterial {
         let mut vrough = self.vroughness.evaluate(si);
 
         // Initalize BSDF for msooth or rough dielectric
-        let bsdf = arena.alloc(BSDF::new(si, self.eta));
+        let mut bsdf = BSDF::new(si, self.eta);
 
         if R.is_black() && T.is_black() { return; }
 
@@ -100,7 +100,7 @@ impl Material for SubsurfaceMaterial {
         si.bsdf = Some(bsdf);
         let siga = self.sigma_a.evaluate(si).clamps(0.0, INFINITY) * self.scale;
         let sigs = self.sigma_s.evaluate(si).clamps(0.0, INFINITY) * self.scale;
-        let bssrdf: &mut BSSRDFs = arena.alloc(TabulatedBSSRDF::new(si, mat, mode, self.eta, &siga, &sigs, self.table.clone()).into());
+        let bssrdf = TabulatedBSSRDF::new(si, mat, mode, self.eta, &siga, &sigs, self.table.clone()).into();
 
         si.bssrdf = Some(bssrdf)
     }
@@ -126,8 +126,8 @@ pub fn create_subsurface_material(mp: &mut TextureParams) -> Materials {
     
     let sigma_a = mp.get_spectrumtexture("sigma_a", siga);
     let sigma_s = mp.get_spectrumtexture("sigma_s", sigs);
-    let kr = mp.get_spectrumtexture("sigma_s", Spectrum::new(1.0));
-    let kt = mp.get_spectrumtexture("sigma_s", Spectrum::new(1.0));
+    let kr = mp.get_spectrumtexture("Kr", Spectrum::new(1.0));
+    let kt = mp.get_spectrumtexture("Kt", Spectrum::new(1.0));
     let roughu = mp.get_floattexture("uroughness", 0.0);
     let roughv = mp.get_floattexture("vroughness", 0.0);
     let bumpmap = mp.get_floattexture_ornull("bumpmap");

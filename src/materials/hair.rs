@@ -160,7 +160,7 @@ impl Material for HairMaterial {
         let a = self.alpha.evaluate(si);
         let e = self.eta.evaluate(si);
 
-        let bsdf = arena.alloc(BSDF::new(si, e));
+        let mut bsdf = BSDF::new(si, e);
 
         let siga = if let Some(ref s) = self.sigma_a {
             s.evaluate(si).clamps(0.0, INFINITY)

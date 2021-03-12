@@ -34,7 +34,7 @@ impl Material for MatteMaterial {
         }
 
         // Evaluate textures for MatteMaterial and allocate BRDF
-        let bsdf = arena.alloc(BSDF::new(si, 1.0));
+        let mut bsdf = BSDF::new(si, 1.0);
         let r = self.kd.evaluate(si).clamps(0.0, INFINITY);
         let sig = clamp(self.sigma.evaluate(si), 0.0 , 90.0);
 

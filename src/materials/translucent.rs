@@ -38,7 +38,7 @@ impl Material for TranslucentMaterial {
         }
 
         let eta = 1.5;
-        let bsdf = arena.alloc(BSDF::new(si, eta));
+        let mut bsdf = BSDF::new(si, eta);
 
         let r = self.reflect.evaluate(si).clamps(0.0, INFINITY);
         let t = self.transmit.evaluate(si).clamps(0.0, INFINITY);

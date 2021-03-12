@@ -83,7 +83,7 @@ impl Material for MetalMaterial {
             bump(map, si)
         }
 
-        let bsdf = arena.alloc(BSDF::new(si, 1.0));
+        let mut bsdf = BSDF::new(si, 1.0);
 
         let mut urough = if let Some(ref u) = self.uroughness {
             u.evaluate(si)

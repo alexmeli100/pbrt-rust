@@ -49,14 +49,14 @@ impl Material for UberMaterial {
         let op = self.opacity.evaluate(si).clamps(0.0, INFINITY);
         let t = (-op + Spectrum::new(1.0)).clamps(0.0, INFINITY);
 
-        let bsdf = if !t.is_black() {
-            let bsdf = arena.alloc(BSDF::new(si, 1.0));
+        let mut bsdf = if !t.is_black() {
+            let mut bsdf = BSDF::new(si, 1.0);
             let tr: &mut BxDFs = arena.alloc(SpecularTransmission::new(&t, 1.0,1.0, mode).into());
             bsdf.add(tr);
 
             bsdf
         } else {
-            arena.alloc(BSDF::new(si, e))
+            BSDF::new(si, e)
         };
 
         let kd = op * self.kd.evaluate(si).clamps(0.0, INFINITY);

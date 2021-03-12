@@ -28,7 +28,7 @@ impl Material for MirrorMaterial {
             bump(map, si);
         }
 
-        let bsdf: &mut BSDF = arena.alloc(BSDF::new(si, 1.0));
+        let mut bsdf = BSDF::new(si, 1.0);
         let R = self.Kr.evaluate(si).clamps(0.0, INFINITY);
 
         if !R.is_black() {

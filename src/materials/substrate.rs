@@ -39,7 +39,7 @@ impl Material for SubstrateMaterial {
             bump(map, si);
         }
 
-        let bsdf = arena.alloc(BSDF::new(si, 1.0));
+        let mut bsdf = BSDF::new(si, 1.0);
         let d = self.kd.evaluate(si).clamps(0.0, INFINITY);
         let s = self.ks.evaluate(si).clamps(0.0, INFINITY);
         let mut roughu = self.nu.evaluate(si);

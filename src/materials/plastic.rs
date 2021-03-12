@@ -36,7 +36,7 @@ impl Material for PlasticMaterial {
         _mat: Option<Arc<Materials>>, _mode: TransportMode, _allow_multiple_lobes: bool) {
         // Perform bump mapping with bumpmap if present
         if self.bump_map.is_some() { bump(self.bump_map.as_ref().unwrap(), si); }
-        let bsdf = arena.alloc(BSDF::new(si, 1.0));
+        let mut bsdf = BSDF::new(si, 1.0);
 
         // Initialize diffuse component of plastic material
         let kd = self.kd.evaluate(si).clamps(0.0, INFINITY);
