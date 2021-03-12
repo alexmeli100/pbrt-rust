@@ -57,7 +57,7 @@ impl<T: SpectrumT<T>> Texture<T> for Checkerboard2DTexture<T> {
 
                 // Apply box filter to checkerboard region
                 let bump = |x: Float| -> Float {
-                    (x / 2.0) + 2.0 * (x / 2.0 - (x / 2.0).floor() - 0.5).max(0.0)
+                    (x / 2.0).floor() + 2.0 * (x / 2.0 - (x / 2.0).floor() - 0.5).max(0.0)
                 };
 
                 let sint = (bump(s1) - bump(s0)) / (2.0 * ds);
@@ -114,10 +114,10 @@ pub fn create_checkerboard_float(t2w: &Transform, tp: &mut TextureParams) -> Opt
     match dim {
         2 => {
             let map = get_mapping2d(t2w, tp);
-            let aa = tp.find_string("aamode", "closedform");
+            let aa = tp.find_string("aamode", "none");
 
             let aam = match aa.as_str() {
-                "none" => AAMethod::None,
+                "none"       => AAMethod::None,
                 "closedform" => AAMethod::ClosedForm,
                 _ => {
                     warn!(
@@ -153,7 +153,7 @@ pub fn create_checkerboard_spectrum(t2w: &Transform, tp: &mut TextureParams) -> 
     match dim {
         2 => {
             let map = get_mapping2d(t2w, tp);
-            let aa = tp.find_string("aamode", "closedform");
+            let aa = tp.find_string("aamode", "none");
 
             let aam = match aa.as_str() {
                 "none"       => AAMethod::None,
