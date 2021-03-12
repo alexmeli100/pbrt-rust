@@ -349,7 +349,7 @@ pub fn create_film(params: &ParamSet, filter: Filters, opts: &Options) -> Film {
         let params_filename = params.find_one_string("filename", "".to_owned());
 
         if !params_filename.is_empty() {
-            warn!("Output filename supplied on command line. \"{}\" is overriding\
+            warn!("Output filename supplied on command line. \"{}\" is overriding \
                   filename provided in scene description file, \"{}\"",
                   opts.image_file.display(), params_filename);
         }
