@@ -1,6 +1,6 @@
 use anyhow::{Result, Context, anyhow};
 use crate::core::geometry::point::Point2i;
-use crate::core::spectrum::{RGBSpectrum, SpectrumType};
+use crate::core::spectrum::{RGBSpectrum, SpectrumType, Spectrum};
 use byteorder::{LittleEndian, ReadBytesExt, BigEndian, ByteOrder, WriteBytesExt};
 use std::path::Path;
 use image::GenericImageView;
@@ -13,6 +13,7 @@ use std::fs::File;
 use crate::core::geometry::bounds::Bounds2i;
 use std::io::Write;
 use crate::core::geometry::vector::Vector2i;
+use image::codecs::hdr::HdrDecoder;
 
 pub fn read_image<P: AsRef<Path>>(name: P) -> Result<(Vec<RGBSpectrum>, Point2i)> {
     let ext = name.as_ref()
@@ -27,6 +28,8 @@ pub fn read_image<P: AsRef<Path>>(name: P) -> Result<(Vec<RGBSpectrum>, Point2i)
         read_image_exr(name)
     } else if ext == "pfm" {
         read_image_pfm(name)
+    } else if ext == "hdr" {
+        read_image_hdr(name)
     } else {
         let err = anyhow!(
         "Unable to load image stored in format \"{:?}\" for filename \"{}\"",
@@ -134,6 +137,32 @@ fn read_word<R: BufRead>(f: &mut R) -> Result<String> {
     }
 
     Ok(s)
+}
+
+fn read_image_hdr<P: AsRef<Path>>(name: P) -> Result<(Vec<RGBSpectrum>, Point2i)> {
+    let f = File::open(name.as_ref())?;
+    let r = BufReader::new(f);
+    let hdr = HdrDecoder::with_strictness(r, false)?;
+
+    let meta = hdr.metadata();
+    //let data = hdr.read_image_hdr()?;
+    let res = Point2i::new(meta.width as isize, meta.height as isize);
+    let mut pixels = vec![Spectrum::default(); (res.x * res.y) as usize];
+    hdr.read_image_transform( |p| {
+        let rgb = p.to_hdr();
+        Spectrum::rgb(rgb[0], rgb[1], rgb[2])
+    },
+        &mut pixels).unwrap();
+
+
+    // let pixels = data
+    //     .into_iter()
+    //     .map(|p| {
+    //         let rgb = p.0;
+    //         Spectrum::rgb(rgb[0], rgb[1], rgb[2])
+    //     }).collect();
+
+    Ok((pixels, res))
 }
 
 fn read_image_pfm<P: AsRef<Path>>(name: P) -> Result<(Vec<RGBSpectrum>, Point2i)> {
