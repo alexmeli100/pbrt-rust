@@ -60,7 +60,7 @@ These are the first few scenes rendered using pbrt-rust. More scenes will be ren
 
 ![Staircase rendered with pbrt-rust](https://github.com/alexmeli100/pbrt-rust/blob/master/rendered_scenes/staircase.png)
 
-**Note**: I still very much consider myself a beginner in rust so there is definitely room for improvement in various parts of the system. Any feedback whatsoever will be greatly welcome and appreciated. Not every part of the system is fully tested so there could still be some bugs I'm not yet aware of especially with the bsdfs. I will fix the bugs, if there are any, as I render more scenes.
+**Note**: I still very much consider myself a beginner in rust so there is definitely room for improvement in various parts of the system. Any feedback whatsoever is greatly welcome and appreciated. Not every part of the system is fully tested so there could still be some bugs I'm not yet aware of especially with the bsdfs. I will fix the bugs, if there are any, as I render more scenes.
 
 ## TODO
 - [ ] Render more scenes and fix any bugs
