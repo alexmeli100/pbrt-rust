@@ -10,7 +10,7 @@ use fern::Output;
 use std::io::Write;
 
 #[derive(StructOpt, Debug)]
-#[structopt(name = "pbrt")]
+#[structopt(name = "pbrt-rust", version = "0.1", about = "Parse a PBRT scene description file and render it")]
 struct Args {
     /// set LOG verbosity
     #[structopt(short, long)]
@@ -116,6 +116,10 @@ fn main() -> Result<()> {
         0 => num_cpus::get(),
         n => n as usize
     };
+
+    println!("pbrt-rust 0.1 [Detected {} cores. Using {}]", num_cpus::get(), nthreads);
+    println!("Copyright (c) 2020-2021 Alex Meli.");
+    println!("Based on the original PBRTv3 C++ version by Matt Pharr, Grep Humphreys, and Wenzel Jacob.");
 
     rayon::ThreadPoolBuilder::new().num_threads(nthreads).build_global().unwrap();
 
