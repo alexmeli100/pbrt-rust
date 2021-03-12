@@ -46,7 +46,8 @@ impl Material for GlassMaterial {
         let R = self.Kr.evaluate(si).clamps(0.0, INFINITY);
         let T = self.Kt.evaluate(si).clamps(0.0, INFINITY);
 
-        let bsdf = arena.alloc(BSDF::new(si, eta));
+
+        let mut bsdf = BSDF::new(si, eta);
 
         if R.is_black() && T.is_black() { return; }
 
