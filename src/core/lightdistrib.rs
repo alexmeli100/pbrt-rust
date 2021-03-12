@@ -2,7 +2,7 @@ use crate::core::geometry::point::{Point3f, Point3i, Point2f};
 use crate::core::sampling::Distribution1D;
 use std::sync::Arc;
 use atom::AtomSetOnce;
-use log::info;
+use log::{info, error, debug};
 use std::sync::atomic::{AtomicU64, Ordering};
 use crate::core::scene::Scene;
 use crate::core::integrator::compute_light_power_distribution;
@@ -16,7 +16,6 @@ use crate::core::medium::MediumInterface;
 use crate::core::geometry::vector::Vector3f;
 use crate::core::light::{VisibilityTester, Light};
 use enum_dispatch::enum_dispatch;
-use log::error;
 
 pub fn create_light_sample_distribution(name: &str, scene: &Scene) -> Option<Arc<LightDistributions>> {
         if name == "uniform" || scene.lights.len() == 1 {
@@ -191,7 +190,7 @@ impl SpatialLightDistribution {
 
             // Use the next two Halton dimensions to sample a point on the
             // light source.
-            let u = Point2f::new(radical_inverse(2, i), radical_inverse(4, i));
+            let u = Point2f::new(radical_inverse(3, i), radical_inverse(4, i));
             for j in 0..self.scene.lights.len() {
                 let mut pdf = 0.0;
                 let mut wi = Vector3f::default();
@@ -218,7 +217,7 @@ impl SpatialLightDistribution {
         let min_contrib = if avg_contrib > 0.0 { 0.001 * avg_contrib } else { 1.0};
 
         for (i, l) in light_contrib.iter_mut().enumerate() {
-            info!("Voxel pi = {}, light = {}, contrib = {}", pi, i, l);
+            debug!("Voxel pi = {}, light = {}, contrib = {}", pi, i, l);
             *l = (*l).max(min_contrib);
         }
 
