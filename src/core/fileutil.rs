@@ -48,7 +48,12 @@ pub fn resolve_filename(filename: &str) -> String {
     }
 
     let mut pp = (*sdir).clone().unwrap();
-    pp.push(filename);
+
+    let ps = filename.split("/");
+
+    for name in ps {
+        pp.push(name);
+    }
 
     pp
         .as_path()
