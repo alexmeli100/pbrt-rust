@@ -15,7 +15,7 @@ use crate::core::geometry::geometry::spherical_direction;
 use crate::core::microfacet::{MicrofacetDistribution, trowbridge_reitz_sample, MicrofacetDistributions, TrowbridgeReitzDistribution};
 use crate::pdf;
 use crate::core::geometry::normal::Normal3f;
-use crate::core::bssrdf::{SeparableBSSRDF, BSSRDF, SeparableBSSRDFAdapter, fresnel_moment1, BSSRDFs};
+use crate::core::bssrdf::{SeparableBSSRDF, BSSRDF, SeparableBSSRDFAdapter, fresnel_moment1};
 use crate::core::scene::Scene;
 use crate::core::rng::ONE_MINUS_EPSILON;
 use crate::core::paramset::TextureParams;
@@ -509,7 +509,7 @@ impl BSSRDF for DisneyBSSRDF {
 
         if !Sp.is_black() {
             // Initialize material model at sampled surface interaction
-            let bsdf = arena.alloc(BSDF::new(si, 1.0));
+            let mut bsdf = BSDF::new(si, 1.0);
             let bxdf: &mut BxDFs = arena.alloc(
                 SeparableBSSRDFAdapter::new(self.clone().into()).into());
             bsdf.add(bxdf);
@@ -728,7 +728,7 @@ impl Material for DisneyMaterial {
         }
 
         // Evaluate textures for DisneyMaterial and allocate BRDF
-        let bsdf = arena.alloc(BSDF::new(si, 1.0));
+        let mut bsdf = BSDF::new(si, 1.0);
 
         // Diffuse
         let c = self.color.evaluate(si).clamps(0.0, INFINITY);
@@ -773,8 +773,7 @@ impl Material for DisneyMaterial {
                     let bxdf: &mut BxDFs = arena.alloc(
                         SpecularTransmission::new(&Spectrum::new(1.0), 1.0, e, mode).into());
                     bsdf.add(bxdf);
-                    let bssrdf: &mut BSSRDFs = arena.alloc(
-                        DisneyBSSRDF::new(si, mat, mode,e, c * dweight, sd ).into());
+                    let bssrdf = DisneyBSSRDF::new(si, mat, mode,e, c * dweight, sd ).into();
                     si.bssrdf = Some(bssrdf);
                 }
             }
