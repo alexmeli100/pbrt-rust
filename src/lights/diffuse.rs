@@ -104,9 +104,8 @@ impl Light for DiffuseAreaLight {
             return Spectrum::new(0.0);
         }
 
-
-        let l = AreaLight::l(self, &pshape, &(-*wi));
         *wi = (pshape.p - re.p).normalize();
+        let l = AreaLight::l(self, &pshape, &(-*wi));
         *vis = VisibilityTester::new(re.clone(), pshape);
 
         l

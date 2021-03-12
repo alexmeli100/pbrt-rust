@@ -3,7 +3,7 @@ use crate::core::geometry::vector::Vector3f;
 use crate::core::spectrum::Spectrum;
 use crate::core::scene::Scene;
 use crate::core::geometry::point::Point2f;
-use crate::core::pbrt::{Float, PI, INFINITY, clamp};
+use crate::core::pbrt::{Float, PI, INFINITY, clamp, INV4_PI};
 use crate::core::geometry::normal::Normal3f;
 use crate::core::material::{Materials, TransportMode};
 use crate::core::primitive::Primitive;
@@ -52,6 +52,61 @@ pub fn fresnel_moment2(eta: Float) -> Float {
         458.843 * r_eta + 404.557 * eta - 189.519 * eta2 +
         54.9327 * eta3 - 9.00603 * eta4 + 0.63942 * eta5
     }
+}
+
+fn beam_diffusion_ms(sigma_s: Float, sigma_a: Float, g: Float, eta: Float, r: Float) -> Float {
+    let nsamples = 100;
+    let mut ed: Float = 0.0;
+    // Precompute information for dipole integrand
+
+    // Compute reduced scattering coefficients sigmaps, sigmapt and albedo rhop
+    let sigmap_s = sigma_s * (1.0 - g);
+    let sigmap_t = sigma_a + sigmap_s;
+    let rhop = sigmap_s / sigmap_t;
+
+    // Compute non-classical diffusion coefficent D_g using Equation (15.24)
+    let dg = (2.0 * sigma_a + sigmap_s) / (3.0 * sigmap_t * sigmap_t);
+
+    // Compute effective transport coefficient sigmatr based on D_G
+    let sigma_tr = (sigma_a / dg).sqrt();
+
+    // Determine linear extrapolation distance depthextrapolation using
+    // Equation (15.28)
+    let fm1 = fresnel_moment1(eta);
+    let fm2 = fresnel_moment2(eta);
+    let ze = -2.0 * dg * (1.0 + 3.0 * fm2) / (1.0 - 2.0 * fm1);
+
+    // Determine exitance scale factors using Equations (15.31) and (15.32)
+    let cphi = 0.25 * (1.0 - 2.0 * fm1);
+    let ce = 0.5 * (1.0 - 3.0 * fm2);
+
+    for i in 0..nsamples {
+        //Sample real point source depth depthreal
+        let zr = -(1.0 - (i as Float + 0.5) / nsamples as Float).ln() / sigmap_t;
+
+        // Evaluate dipole integrand Ed at depthreal and add to
+        // Ed
+        let zv = -zr + 2.0 * ze;
+        let dr = (r * r + zr * zr).sqrt();
+        let dv = (r * r + zv * zv).sqrt();
+
+        // Compute dipole fluence rate dipole(r) using Equation (15.27)
+        let phid = INV4_PI / dg * ((-sigma_tr * dr).exp() / dr - (-sigma_tr * dv).exp() / dv);
+
+        // Compute dipole vector irradiance -\N{}\cdot\dipoleE(r) using
+        // Equation (15.27)
+        let edn = INV4_PI * (zr * (1.0 + sigma_tr * dr) *
+                                        (-sigma_tr * dr).exp() / (dr * dr * dr) -
+                                  zv * (1.0 + sigma_tr * dv) *
+                                        (-sigma_tr * dv).exp() / (dv * dv * dv));
+
+        // Add contribution from dipole for depth $\depthreal$ to _Ed_
+        let E = phid * cphi + edn * ce;
+        let kappa = 1.0 - (-2.0 * sigmap_t * (dr + zr)).exp();
+        ed += kappa * rhop * rhop * E;
+    }
+
+    ed / nsamples as Float
 }
 
 fn beam_diffusion_ss(sigma_s: Float, sigma_a: Float, g: Float, eta: Float, r: Float) -> Float {
@@ -113,7 +168,7 @@ pub fn compute_beam_diffusion_bssrdf(g: Float, eta: Float, t: &mut BSSRDFTable) 
         .for_each(|(p, (rho, r))| {
             *p = 2.0 * PI * r *
                 (beam_diffusion_ss(rho, 1.0 - rho, g, eta, r) +
-                 beam_diffusion_ss(rho, 1.0 - rho, g, eta, r));
+                 beam_diffusion_ms(rho, 1.0 - rho, g, eta, r));
         });
 
     // Compute effective albedo rho and CDF for importance sampling
@@ -397,14 +452,12 @@ impl SeparableBSSRDF for TabulatedBSSRDF {
             let mut rho_weights = [0.0; 4];
             let mut radius_weights = [0.0; 4];
 
-            let x = !catmull_rom_weights(
+            if !catmull_rom_weights(
                 self.table.nrho_samples as i32, &self.table.rho_samples,
-                     self.rho[ch], &mut rho_off, &mut rho_weights);
-            let y = !catmull_rom_weights(
+                self.rho[ch], &mut rho_off, &mut rho_weights)||
+                !catmull_rom_weights(
                 self.table.nradius_samples as i32, &self.table.radius_samples,
-                roptical, &mut rad_off, &mut radius_weights);
-
-            if !x || !y { continue; }
+                roptical, &mut rad_off, &mut radius_weights) { continue; }
 
             // Set BSSRDF r[ch] using tensor spline interpolation
             let mut sr = 0.0;
@@ -437,7 +490,7 @@ impl SeparableBSSRDF for TabulatedBSSRDF {
         sample_catmull_rom_2d(
             self.table.nrho_samples as i32, self.table.nradius_samples as i32,
             &self.table.rho_samples, &self.table.radius_samples,
-            &self.table.profile, &self.table.profile_cdf, self.rho[0], u, None, None
+            &self.table.profile, &self.table.profile_cdf, self.rho[ch], u, None, None
         ) / self.sigma_t[ch]
     }
 
@@ -455,7 +508,7 @@ impl SeparableBSSRDF for TabulatedBSSRDF {
         if !catmull_rom_weights(table.nrho_samples as i32, &table.rho_samples,
                 self.rho[ch], &mut rho_offset, &mut rho_weights) ||
            !catmull_rom_weights(table.nradius_samples as i32, &table.radius_samples,
-                roptical, & mut radius_offset, &mut radius_weights) {
+                roptical, &mut radius_offset, &mut radius_weights) {
             return 0.0;
         }
 
@@ -463,23 +516,23 @@ impl SeparableBSSRDF for TabulatedBSSRDF {
         let mut sr = 0.0;
         let mut rho_eff = 0.0;
 
-        for i in 0..4 {
-            if rho_weights[i] == 0.0 { continue; }
-            rho_eff += table.rhoeff[rho_offset as usize + i] * rho_weights[i];
+        for (i, rho_weight) in rho_weights.iter().enumerate() {
+            if *rho_weight == 0.0 { continue; }
+            rho_eff += table.rhoeff[rho_offset as usize + i] * rho_weight;
 
-            for j in 0..4 {
-                if radius_weights[i] == 0.0 { continue; }
+            for (j, radius_weight) in radius_weights.iter().enumerate() {
+                if *radius_weight == 0.0 { continue; }
                 sr += table.eval_profile(
                     rho_offset as usize + i,
                     radius_offset as usize + j) *
-                    rho_weights[i] * radius_weights[j];
+                    rho_weight * radius_weight;
             }
         }
 
         // Cancel marginal PDF factor from tabulated BSSRDF profile
         if roptical != 0.0 { sr /= 2.0 * PI * roptical; }
 
-        (sr * self.sigma_t[ch] * self.sigma_t[0] / rho_eff).max(0.0)
+        (sr * self.sigma_t[ch] * self.sigma_t[ch] / rho_eff).max(0.0)
     }
 
     fn mode(&self) -> TransportMode {
@@ -507,7 +560,7 @@ impl BSSRDF for TabulatedBSSRDF {
 
         if !Sp.is_black() {
             // Initialize material model at sampled surface interaction
-            let bsdf = arena.alloc(BSDF::new(si, 1.0));
+            let mut bsdf = BSDF::new(si, 1.0);
             let bxdf: &mut BxDFs = arena.alloc(
                 SeparableBSSRDFAdapter::new(self.clone().into()).into());
             bsdf.add(bxdf);

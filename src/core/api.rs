@@ -14,7 +14,6 @@ use crate::core::light::{Lights};
 use crate::core::primitive::{Primitives, GeometricPrimitive, TransformedPrimitive};
 use crate::{stat_counter, stat_memory_counter, stat_percent, stat_int_distribution};
 use crate::core::stats::*;
-use nalgebra::Matrix4;
 use crate::core::geometry::vector::Vector3f;
 use crate::core::geometry::point::Point3f;
 use crate::core::shape::Shapes;
@@ -360,7 +359,7 @@ impl GraphicsState {
 
     }
 
-    pub fn get_materialfor_shape(&self, params: &ParamSet) -> Option<Arc<Materials>> {
+    pub fn get_materialfor_shape(&self, params: &ParamSet, opts: &RenderOptions) -> Option<Arc<Materials>> {
         assert!(self.current_material.is_some());
 
         if shape_may_set_materialparameters(params) {
@@ -373,7 +372,7 @@ impl GraphicsState {
 
             return make_material(
                 &self.current_material.as_ref().unwrap().name,
-                &mut mp, self, &self.opts)
+                &mut mp, self, &opts)
         }
 
         self.current_material.as_ref().unwrap().material.clone()
@@ -592,7 +591,7 @@ fn make_shapes(
     shapes
 }
 
-fn make_material(name: &str, mp: &mut TextureParams, state: &GraphicsState, opts: &Options) -> Option<Arc<Materials>> {
+fn make_material(name: &str, mp: &mut TextureParams, state: &GraphicsState, opts: &RenderOptions) -> Option<Arc<Materials>> {
     // TODO: Add more materials
     if name.is_empty() || name == "none" {
         return None;
@@ -612,7 +611,7 @@ fn make_material(name: &str, mp: &mut TextureParams, state: &GraphicsState, opts
         "subsurface"   => Some(Arc::new(create_subsurface_material(mp))),
         "kdsubsurface" => Some(Arc::new(create_kdsubsurface_material(mp))),
         "uber"         => Some(Arc::new(create_uber_material(mp))),
-        "mix"       => {
+        "mix"          => {
             let m1 = mp.find_string("namedmaterial1", "");
             let m2 = mp.find_string("namedmaterial2", "");
 
@@ -644,8 +643,7 @@ fn make_material(name: &str, mp: &mut TextureParams, state: &GraphicsState, opts
         warn!(
             "Subsurface scattering material \"{}\" used, but \"{}\"\
              integrator doesn't support subsurface scattering. \
-             Use \"path\" or \"volpath\"", name, opts.integrator_name
-        );
+             Use \"path\" or \"volpath\"", name, opts.integrator_name);
     }
 
     mp.report_unused();
@@ -1396,7 +1394,7 @@ impl API {
             &self.graphics_state.float_textures,
             &self.graphics_state.spectrum_textures);
 
-        let mtl = make_material(name, &mut mp, &self.graphics_state, &self.opts);
+        let mtl = make_material(name, &mut mp, &self.graphics_state, &self.render_options);
         self.graphics_state.current_material = Some(Arc::new(MaterialInstance::new(name, mtl, params)));
 
         if self.opts.cat || self.opts.to_ply {
@@ -1429,7 +1427,7 @@ impl API {
             return;
         }
 
-        let mtl = make_material(name, &mut mp, &self.graphics_state, &self.opts);
+        let mtl = make_material(&mat_name, &mut mp, &self.graphics_state, &self.render_options);
 
         if self.graphics_state.named_materials.contains_key(name) {
             warn!("Named Material \"{}\" redefined.", name);
@@ -1462,7 +1460,6 @@ impl API {
         verify_world!(self, "LightSource");
         warn_if_animated_transform!(self, "LightSource");
         let mi = self.graphics_state.create_medium_interface(&self.render_options);
-        //println!("{:?}", self.curr_transform[0]);
         let lt = make_light(name, params, &self.curr_transform[0], mi, &self.opts);
 
         if let Some(val) = lt {
@@ -1522,7 +1519,7 @@ impl API {
                 return;
             }
 
-            let mtl = self.graphics_state.get_materialfor_shape(params);
+            let mtl = self.graphics_state.get_materialfor_shape(params, &self.render_options);
             params.report_unused();
             let mi = self.graphics_state.create_medium_interface(&self.render_options);
             prims = Vec::with_capacity(shapes.len());
@@ -1563,7 +1560,7 @@ impl API {
             }
 
             // Create GeometricPrimitives for animated shape
-            let mtl = self.graphics_state.get_materialfor_shape(params);
+            let mtl = self.graphics_state.get_materialfor_shape(params, &self.render_options);
             params.report_unused();
             let mi = self.graphics_state.create_medium_interface(&self.render_options);
             prims = Vec::with_capacity(shapes.len());
