@@ -186,8 +186,6 @@ impl Shape for Sphere {
         let p_error = Vector3f::from(p_hit).abs() * gamma(5);
 
         // Initialize SurfaceInteraction from parametric information
-        //println!("{:?}", Normal3f::from(dpdu.cross(&dpdv).normalize()));
-
         let mut s = SurfaceInteraction::new(
             &p_hit, &p_error, &Point2f::new(u, v), &-ray.d,
             &dpdu, &dpdv, &dndu, &dndv, ray.time, None);

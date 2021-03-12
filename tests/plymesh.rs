@@ -24,6 +24,5 @@ mod plymesh {
             iden.clone(), iden.clone(),
             true, &params, &textures);
 
-        //println!("{}", triangles.len());
     }
 }

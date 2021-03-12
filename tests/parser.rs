@@ -7,65 +7,51 @@ mod parser {
     #[test]
     fn test_parser() {
         let input = r#"
+Integrator "path" "integer maxdepth" [4]
 
-LookAt 400 20 30   0 63 -110   0 0 1
-Rotate -5 0 0 1
-Camera "perspective" "float fov" [39]
-Film "image"
-"integer xresolution" [700] "integer yresolution" [700]
-    "string filename" "killeroo-simple.exr"
+Sampler "halton" "integer pixelsamples" [512]
 
-# zoom in by feet
-# "integer xresolution" [1500] "integer yresolution" [1500]
-#	"float cropwindow" [ .34 .49  .67 .8 ]
+PixelFilter "gaussian"
 
-Sampler "halton" "integer pixelsamples" [8]
+# Film "image" "integer xresolution" [1440] "integer yresolution" [1440]
+#     "string filename" "ganesha.exr"
+Film "image" "integer xresolution" [720] "integer yresolution" [720]
+    "string filename" "ganesha.exr"
 
-Integrator "path"
+Scale -1 1 1
+LookAt 328.0 40.282 245.0 328.0 10.0 0.0 -0.00212272 0.998201 -0.0599264
+Camera "perspective" "float fov" [30.0]
 
 WorldBegin
+Shape "trianglemesh" "point P" [-672.0 -41.99995803833008 1000.0 1328.0 -41.99995803833008 1000.0 1328.0 -42.00004196166992 -1000.0 -672.0 -42.00004196166992 -1000.0] "integer indices" [0 1 2 0 2 3]
 
 AttributeBegin
-Material "matte" "color Kd" [0 0 0]
-Translate 150 0  20
-Translate 0 120 0
-AreaLightSource "area"  "color L" [2000 2000 2000] "integer nsamples" [8]
-Shape "sphere" "float radius" [3]
-AttributeEnd
-
-
-AttributeBegin
-  Material "matte" "color Kd" [.5 .5 .8]
-  Translate 0 0 -140
-Shape "trianglemesh" "point P" [ -1000 -1000 0 1000 -1000 0 1000 1000 0 -1000 1000 0 ]
-      "float uv" [ 0 0 5 0 5 5 0 5 ]
-	"integer indices" [ 0 1 2 2 3 0]
-Shape "trianglemesh" "point P" [ -400 -1000 -1000   -400 1000 -1000   -400 1000 1000 -400 -1000 1000 ]
-      "float uv" [ 0 0 5 0 5 5 0 5 ]
-        "integer indices" [ 0 1 2 2 3 0]
+    Transform [0 0 -1 0 1 0 0 0 0 1 0 0 0 0 0 1]
+    LightSource "infinite" "string mapname" ["textures/sky.hdr"] "color scale" [0.1 0.1 0.1]
 AttributeEnd
 
 AttributeBegin
-Scale .5 .5 .5
-Rotate -60 0 0 1
-    Material "plastic" "color Kd" [.4 .2 .2] "color Ks" [.5 .5 .5]
-        "float roughness" [.025]
-Translate 100 200 -140
-    Include "geometry/killeroo.pbrt"
-    Material "plastic" "color Ks" [.3 .3 .3] "color Kd" [.4 .5 .4]
-        "float roughness" [.15]
-Translate -200 0 0
-    Include "geometry/killeroo.pbrt"
+    AreaLightSource "area" "color L" [15.258818626403809 12.083925247192383 9.589462280273438]
+    Shape "trianglemesh" "point P" [220.0 61.36730194091797 -343.6283264160156 400.0 61.36730194091797 -343.6283264160156 400.0 238.6326904296875 -312.3716735839844 220.0 238.6326904296875 -312.3716735839844] "integer indices" [0 1 2 0 2 3]
+AttributeEnd
 
+AttributeBegin
+    AreaLightSource "area" "color L" [15.258818626403809 12.083925247192383 9.589462280273438]
+    ReverseOrientation
+    Shape "trianglemesh" "point P" [220.0 61.36730194091797 343.6283264160156 400.0 61.36730194091797 343.6283264160156 400.0 238.6326904296875 312.3716735839844 220.0 238.6326904296875 312.3716735839844] "integer indices" [0 1 2 0 2 3]
+AttributeEnd
+
+Texture "tmap" "color" "imagemap" "string filename" ["textures/ganesha.png"]
+
+AttributeBegin
+    Material "substrate" "texture Kd" "tmap" "color Ks" [0.04 0.04 0.04]
+        "float uroughness" [0.01] "float vroughness" [0.01]
+        "bool remaproughness" ["false"]
+    Shape "plymesh" "string filename" ["geometry/ganesha.ply"]
 AttributeEnd
 WorldEnd
-"#;
 
-        // let lex = Lexer::new(input);
-        //
-        // for tok in lex.into_iter() {
-        //     println!("{:?}", tok);
-        // }
+"#;
 
         let res = PARSER.parse(Lexer::new(input));
         assert!(res.is_ok());
@@ -76,7 +62,6 @@ WorldEnd
             println!("{:?}", c);
         }
 
-        println!("length: {}", commands.len());
     }
 
     #[test]
