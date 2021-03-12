@@ -1,7 +1,7 @@
 use crate::core::pbrt::{Float, INFINITY};
 use std::sync::Arc;
 use crate::core::texture::{TextureSpec, TextureFloat, Texture};
-use crate::core::bssrdf::{BSSRDFTable, subsurface_from_diffuse, BSSRDFs, TabulatedBSSRDF, compute_beam_diffusion_bssrdf};
+use crate::core::bssrdf::{BSSRDFTable, subsurface_from_diffuse, TabulatedBSSRDF, compute_beam_diffusion_bssrdf};
 use crate::core::material::{Material, TransportMode, bump, Materials};
 use bumpalo_herd::Member;
 use crate::core::interaction::SurfaceInteraction;
@@ -56,7 +56,7 @@ impl Material for KdSubsurfaceMaterial {
         let mut vrough = self.vroughness.evaluate(si);
 
         // Initialize bsdf for smooth or rough dielectric
-        let bsdf = arena.alloc(BSDF::new(si, self.eta));
+        let mut bsdf = BSDF::new(si, self.eta);
 
         if R.is_black() && T.is_black() { return; }
 
@@ -101,7 +101,7 @@ impl Material for KdSubsurfaceMaterial {
         let mfree = self.mfp.evaluate(si).clamps(0.0, INFINITY) * self.scale;
         let kd = self.kd.evaluate(si).clamps(0.0, INFINITY).clamps(0.0, INFINITY);
         let (sigma_a, sigma_s) = subsurface_from_diffuse(&self.table, &kd, &mfree);
-        let bssrdf: &mut BSSRDFs = arena.alloc(TabulatedBSSRDF::new(si, mat, mode, self.eta, &sigma_a, &sigma_s, self.table.clone()).into());
+        let bssrdf = TabulatedBSSRDF::new(si, mat, mode, self.eta, &sigma_a, &sigma_s, self.table.clone()).into();
 
         si.bssrdf = Some(bssrdf)
     }
