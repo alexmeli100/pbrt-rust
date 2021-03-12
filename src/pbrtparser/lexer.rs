@@ -98,7 +98,6 @@ impl<'input> Lexer<'input> {
             } else if let Some(mat) = WS.find(self.text) {
                 self.pos += mat.end();
                 self.text = &self.text[mat.end()..];
-                //println!("{}", self.text);
                 continue
             }
 
