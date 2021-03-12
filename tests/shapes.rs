@@ -32,7 +32,7 @@ mod shapes {
         lerp(rng.uniform_float(), -range, range)
     }
 
-    #[test]
+    //#[test]
     fn triangle_watertight() {
         let mut rng = RNG::new(12111);
         let ntheta = 16;

@@ -17320,7 +17320,14 @@ mod fourier_bsdf {
         let mut w = Vector3f::default();
         let mut pdf = 0.0;
         let fr = bsdf.sample_f(&wo, &mut w, &Point2f::new(0.1, 0.8), &mut pdf, &mut 0);
+        assert!(err(fr.y(), 2.596391) < 0.001);
+        assert!(err(pdf, 1.855472) < 0.001);
+        assert!(err(w.x, 0.539052) < 0.001);
+        assert!(err(w.y, 0.617347) < 0.001);
+        assert!(err(w.z, 0.572980) < 0.001);
 
+        let r = std::fs::remove_file(filename);
+        assert!(r.is_ok());
     }
 
 }
