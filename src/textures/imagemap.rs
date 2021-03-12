@@ -223,17 +223,3 @@ pub fn create_image_spectrum(t2w: &Transform, tp: &mut TextureParams) -> Option<
     Some(Arc::new(img))
 }
 
-#[test]
-fn test_image() {
-    crate::core::stats::init_stats();
-    crate::core::mipmap::init_stats();
-    let uv: TextureMapping2Ds = UVMapping2D::new(1.0, 0.5, 1.0, 0.5).into();
-    let tex = ImageTexture::<RGBSpectrum>::new(
-        uv, "C:\\Users\\alexm\\Documents\\code\\Rust\\pbrt-rust\\src\\scenes\\textures\\lines.png", true,
-        8.0, ImageWrap::Repeat, 1.0, true
-    );
-
-
-    let size = tex.mipmap.pyramid.len();
-    println!("{:?}", tex.mipmap.pyramid[4]);
-}

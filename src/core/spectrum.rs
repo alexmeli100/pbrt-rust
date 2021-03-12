@@ -578,19 +578,3 @@ fn illuminant_to_rgb(rgb: [Float; 3], r: &mut SampledSpectrum) {
 
     *r *= 0.86445;
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::core::spectrum::RGBSpectrum;
-
-    #[test]
-    fn test_spectrum_add() {
-        let s1 = RGBSpectrum::new(2.0);
-        let s2 = RGBSpectrum::new(1.0);
-        let s = s1 - s2;
-
-        assert_eq!(s, RGBSpectrum::new(1.0));
-        assert!(!s.to_string().is_empty());
-        println!("{}", s);
-    }
-}
