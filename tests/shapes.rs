@@ -114,8 +114,6 @@ mod shapes {
             u[1] = r.uniform_float();
             let p = Point3f::default() + uniform_sample_sphere(&u) * 0.5;
 
-            //println!("{}", p);
-
             // Choose a random direction
             u[0] = r.uniform_float();
             u[1] = r.uniform_float();
@@ -133,7 +131,6 @@ mod shapes {
 
             // Now tougher: shoot directly at a vertex.
             let pvertex = vertices[r.uniform_int32_2(vertices.len() as u32) as usize];
-            //println!("{}", pvertex);
             ray.d = pvertex - ray.o;
             nhits = 0;
 
@@ -260,8 +257,6 @@ mod shapes {
                 if tri.intersect_p(&ray, true) { hits += 1; }
             }
 
-            println!("{}", hits);
-
             let unif_estimate = hits as f64 / (count as f64 * uniform_sphere_pdf() as f64);
 
             let refi = InteractionData::new(
@@ -368,8 +363,6 @@ mod shapes {
             if shape.intersect_p(&ray, false) { nhits += 1; }
         }
 
-        //println!("{}", nhits);
-
         nhits as Float / (uniform_sphere_pdf() * nsamples as Float)
     }
 
@@ -451,12 +444,10 @@ mod shapes {
             u[0] = rng.uniform_float();
             u[1] = rng.uniform_float();
             let mut w = uniform_sample_sphere(&u);
-            //println!("{:?}", isect.n);
             // Make sure it's in the same hemisphere as the surface normal
             w = w.face_foward_norm(&isect.n);
 
             let mut rout = isect.spawn_ray(&w);
-            //println!("{:?}, {:?}", rout.o, rout.d);
             assert!(!shape.intersect_p(&rout, false));
 
             let mut spawn_isect = SurfaceInteraction::default();
