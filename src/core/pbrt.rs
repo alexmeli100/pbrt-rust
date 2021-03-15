@@ -111,6 +111,12 @@ pub fn next_float_down(v: f32) -> f32 {
     bits_to_float(ui)
 }
 
+pub fn log2(x: Float) -> Float {
+    let inv_log2 = 1.442695040888963387004650940071;
+
+    x.ln() * inv_log2
+}
+
 pub fn log2_uint(v: u32) -> i32 {
     31_i32 - v.leading_zeros() as i32
 }
