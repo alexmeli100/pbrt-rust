@@ -45,12 +45,10 @@ pub trait Material {
 
 pub fn bump(d: &Arc<TextureFloat>, si: &mut SurfaceInteraction) {
     // Compute offset positions and evaluete displacement texture
-    let mut si_eval = SurfaceInteraction::new(
-        &si.p, &si.p_error, &si.uv, &si.wo, &si.dpdu, &si.dpdv,
-        &si.dndu, &si.dndv, si.time, si.shape.clone());
+    let mut si_eval = si.clone();
 
     // Shift si_eval du in the u direction
-    let mut du = 0.5 * (si.dudx.get().abs()) + si.dudy.get().abs();
+    let mut du = 0.5 * (si.dudx.get().abs() + si.dudy.get().abs());
 
     // The most common reason for du to be zero is for ray that start from
     // light sources, where no differentials are available. In this case,
@@ -63,7 +61,7 @@ pub fn bump(d: &Arc<TextureFloat>, si: &mut SurfaceInteraction) {
     let udisplace = d.evaluate(&si_eval);
 
     // Shift si_eval dv in the v direction
-    let mut dv = 0.5 * (si.dvdx.get().abs()) + si.dvdy.get().abs();
+    let mut dv = 0.5 * (si.dvdx.get().abs() + si.dvdy.get().abs());
     if dv == 0.0 { dv = 0.0005; }
 
     si_eval.p = si.p + si.shading.dpdv * dv;
