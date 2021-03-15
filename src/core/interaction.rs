@@ -141,7 +141,7 @@ impl Interaction for InteractionData {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct SurfaceInteraction<'a> {
     // Interaction Data
     pub p                   : Point3f,
