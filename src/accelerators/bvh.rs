@@ -272,11 +272,10 @@ impl BVHAccel {
                     },
                 };
 
-                node.init_interior(
-                    dim,
-                    self.recursive_build(arena, primitive_info, start, mid, total_nodes, ordered_prims),
-                    self.recursive_build(arena, primitive_info, mid, end, total_nodes, ordered_prims)
-                );
+                let right = self.recursive_build(arena, primitive_info, mid, end, total_nodes, ordered_prims);
+                let left = self.recursive_build(arena, primitive_info, start, mid, total_nodes, ordered_prims);
+
+                node.init_interior(dim, left, right);
             }
         }
 
@@ -348,7 +347,7 @@ impl BVHAccel {
             let mut min_cost = cost[0];
             let mut min_cost_split_bucket = 0;
 
-            for (i, item) in cost[1..NBUCKETS - 1].iter().enumerate() {
+            for (i, item) in cost[0..NBUCKETS - 1].iter().enumerate().skip(1) {
                 if item < &min_cost {
                     min_cost = *item;
                     min_cost_split_bucket = i;
@@ -791,7 +790,6 @@ impl Primitive for BVHAccel {
                     if to_visitoffset == 0 { break; }
                     to_visitoffset -= 1;
                     currentnode_index = nodes_tovisit[to_visitoffset];
-
                 } else {
                     // Put far BVH node on nodes_tovisit stack, advance to near node
                     if dir_isneg[node.axis as usize] != 0 {
