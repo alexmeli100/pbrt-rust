@@ -207,7 +207,7 @@ struct RenderOptions {
     lights                  : Vec<Arc<Lights>>,
     primitives              : Vec<Arc<Primitives>>,
     instances               : HashMap<String, Vec<Arc<Primitives>>>,
-    current_instance        : Option<Vec<Arc<Primitives>>>,
+    current_instance        : Option<String>,
     have_scattering_media   : bool
 }
 
@@ -1593,18 +1593,17 @@ impl API {
         }
 
         // Add prims and areaLights to scene or current instance
-        let curr_instance = &mut self.render_options.current_instance;
+
         let primitives = &mut self.render_options.primitives;
         let lights = &mut self.render_options.lights;
 
-        if curr_instance.is_some() {
+        if let Some(ref inst) = self.render_options.current_instance {
             if !area_lights.is_empty() {
                 warn!("Area lights not supported with object instancing");
             }
 
-            //let c = curr_instance.as_mut().unwrap();
-
-            curr_instance.as_mut().unwrap().append(&mut prims);
+            let curr_instance = &mut self.render_options.instances.get_mut(inst).unwrap();
+            curr_instance.append(&mut prims);
         } else {
             primitives.append(&mut prims);
 
@@ -1633,7 +1632,7 @@ impl API {
 
         let prims: Vec<Arc<Primitives>> = Vec::new();
         self.render_options.instances.insert(name.to_owned(), prims);
-        self.render_options.current_instance = self.render_options.instances.get_mut(name).cloned();
+        self.render_options.current_instance = Some(name.to_owned());
 
         if self.opts.cat || self.opts.to_ply {
             println!("{:indent$} ObjectBegin \"{}\"", "", name, indent=self.indent_count);
@@ -1687,7 +1686,9 @@ impl API {
         if instance.len() > 1 {
             // Create aggregate for instance Primitives
             // TODO: check if it's ok to move the instance
-            let accel = make_accelerator(name, instance.clone(), &self.render_options.accelerator_params);
+            let accel = make_accelerator(
+                &self.render_options.accelerator_name,
+                instance.clone(), &self.render_options.accelerator_params);
             instance.clear();
             instance.push(accel)
         }
@@ -1699,8 +1700,7 @@ impl API {
         let obj2 = self.transform_cache.lookup(&self.curr_transform[1]);
 
         let anim = AnimatedTransform::new(
-            obj1,
-            obj2,
+            obj1, obj2,
             self.render_options.transform_start_time,
             self.render_options.transform_end_time);
         let tprim = TransformedPrimitive::new(instance[0].clone(), anim);
