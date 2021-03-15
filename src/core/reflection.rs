@@ -994,10 +994,11 @@ impl<'a> BxDF for MicrofacetReflection<'a> {
 
         // For the Fresnel call, make sure that wh is in the same hemisphere
         // as the surface normal, so that TIR is handled correctly
-        let F = self.fresnel.evaluate(wi.dot(&wh.face_foward(&Vector3f::new(0.0, 0.0, 1.0))));
+        let F = self.fresnel.evaluate(wi.dot(&wh));
+        let d = self.distribution.d(&wh);
+        let g = self.distribution.g(&wo, &wi);
 
-        self.r * self.distribution.d(&wh) * self.distribution.g(&wo, & wi) * F /
-            (4.0 * cos_thetai * cos_thetao)
+        self.r * d * g * F / (4.0 * cos_thetai * cos_thetao)
     }
 
     fn sample_f(&self, wo: &Vector3f, wi: &mut Vector3f, sample: &Point2f, pdf: &mut f32, _sampled_type: &mut u8) -> Spectrum {
