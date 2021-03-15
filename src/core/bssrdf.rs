@@ -226,6 +226,7 @@ pub trait SeparableBSSRDF: BSSRDF {
 }
 
 #[enum_dispatch]
+#[derive(Clone)]
 pub enum BSSRDFs {
     DisneyBSSRDF(DisneyBSSRDF),
     TabulatedBSSRDF(TabulatedBSSRDF)
@@ -237,6 +238,7 @@ pub enum SeparableBSSRDFs {
     DisneyBSSRDF
 }
 
+#[derive(Clone)]
 pub struct BSSRDFTable {
     nrho_samples    : usize,
     nradius_samples : usize,
