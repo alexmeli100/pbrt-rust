@@ -49,7 +49,7 @@ impl Material for PlasticMaterial {
         let ks = self.ks.evaluate(si).clamps(0.0, INFINITY);
 
         if !ks.is_black() {
-            let fresnel: &mut Fresnels = arena.alloc(FresnelDielectric::new(1.5, 1.5).into());
+            let fresnel: &mut Fresnels = arena.alloc(FresnelDielectric::new(1.5, 1.0).into());
 
             // Create microfacet distribution distrib for plastic material
             let mut rough = self.roughness.evaluate(si);
