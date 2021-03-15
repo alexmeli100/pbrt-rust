@@ -326,6 +326,7 @@ impl Shape for Triangle {
                     self.mesh.s[self[0]] * b0 +
                     self.mesh.s[self[1]] * b1 +
                     self.mesh.s[self[2]] * b2;
+
                 if ss.length_squared() > 0.0 {
                     ss = ss.normalize();
                 } else {
@@ -378,7 +379,7 @@ impl Shape for Triangle {
                     let invdet = 1.0 / det;
                     (
                         (dn1 * duv12[1] - dn2 * duv02[1]) * invdet,
-                        (dn1 * -duv12[0] * dn2 * duv02[0]) * invdet
+                        (dn1 * -duv12[0] + dn2 * duv02[0]) * invdet
                     )
                 }
             } else {
