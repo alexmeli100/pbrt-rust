@@ -71,7 +71,7 @@ impl Primitive for TransformedPrimitive {
         r.t_max = ray.t_max;
 
         // Transform instance's intersection data to world space
-        if inter_prim_toworld.is_identity() {
+        if !inter_prim_toworld.is_identity() {
             *isect = inter_prim_toworld.transform_surface_interaction(isect);
         }
 
