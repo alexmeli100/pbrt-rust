@@ -56,7 +56,7 @@ fn correct_shading_normal(
 
             num / denom
         },
-        _                          => 1.0
+        _                         => 1.0
     }
 }
 
@@ -708,8 +708,6 @@ impl Integrator for BDPTIntegrator {
             }
         }
 
-        let herd = Herd::new();
-
         // Render and write the output image to disk
         if !scene.lights.is_empty() {
             let (sendt, recvt) = bounded(tiles.len());
@@ -719,7 +717,7 @@ impl Integrator for BDPTIntegrator {
                 .for_each(| Point2i { x, y } | {
                     // Render a single tile using BDPT
                     let sendtx = sendt.clone();
-                    let arena = herd.get();
+
                     let seed = y * nxtiles + x;
                     let mut tsampler = Sampler::clone(sampler.as_ref(), seed);
                     let x0 = sbounds.p_min.x + x * tilesize;
@@ -732,78 +730,84 @@ impl Integrator for BDPTIntegrator {
                     info!("Starting image tile {}", tile_bounds);
                     let mut film_tile = film.get_film_tile(&tile_bounds);
 
+                    let mut herd = Herd::new();
+
                     for ppixel in &tile_bounds {
                         tsampler.start_pixel(&ppixel);
                         if !self.pbounds.inside_exclusive(&ppixel) { continue; }
 
                         loop {
-                            // Generate single sample using BDPT
-                            let pfilm = Point2f::from(ppixel) + tsampler.get_2d();
+                            {
+                                let arena = herd.get();
+                                // Generate single sample using BDPT
+                                let pfilm = Point2f::from(ppixel) + tsampler.get_2d();
 
-                            // Trace the camera subpath
-                            let mut cvertices = Vec::with_capacity(self.max_depth as usize + 2);
-                            let mut lvertices = Vec::with_capacity(self.max_depth as usize + 1);
-                            let ncamera = generate_camera_subpath(
-                                scene, &mut tsampler, &arena, (self.max_depth + 1) as usize,
-                                camera, &pfilm, &mut cvertices);
-                            // Get a distribution for sampling the light at the
-                            // start of the light subpath. Because the light path
-                            // follows multiple bounces, basing the sampling
-                            // distribution on any of the vertices of the camera
-                            // path is unlikely to be a good strategy. We use the
-                            // PowerLightDistribution by default here, which
-                            // doesn't use the point passed to it.
-                            let light_distr = light_distrib.lookup(&cvertices[0].p());
-                            // Now trace the light subpath
-                            let nlight = generate_light_subpath(
-                                scene, &mut tsampler, &arena, (self.max_depth + 1) as usize,
-                                cvertices[0].time(), &light_distr, &lti, &mut lvertices);
+                                // Trace the camera subpath
+                                let mut cvertices = Vec::with_capacity(self.max_depth as usize + 2);
+                                let mut lvertices = Vec::with_capacity(self.max_depth as usize + 1);
+                                let ncamera = generate_camera_subpath(
+                                    scene, &mut tsampler, &arena, (self.max_depth + 2) as usize,
+                                    camera, &pfilm, &mut cvertices);
+                                // Get a distribution for sampling the light at the
+                                // start of the light subpath. Because the light path
+                                // follows multiple bounces, basing the sampling
+                                // distribution on any of the vertices of the camera
+                                // path is unlikely to be a good strategy. We use the
+                                // PowerLightDistribution by default here, which
+                                // doesn't use the point passed to it.
+                                let light_distr = light_distrib.lookup(&cvertices[0].p());
+                                // Now trace the light subpath
+                                let nlight = generate_light_subpath(
+                                    scene, &mut tsampler, &arena, (self.max_depth + 1) as usize,
+                                    cvertices[0].time(), &light_distr, &lti, &mut lvertices);
 
-                            // Execute all BDPT connection strategies
-                            let mut L = Spectrum::new(0.0);
+                                // Execute all BDPT connection strategies
+                                let mut L = Spectrum::new(0.0);
 
-                            for t in 1..=(ncamera as isize) {
-                                for s in 0..=(nlight as isize) {
-                                    let depth = t + s - 2;
+                                for t in 1..=(ncamera as isize) {
+                                    for s in 0..=(nlight as isize) {
+                                        let depth = t + s - 2;
 
-                                    if (s == 1 && t == 1) || depth < 0 || depth > self.max_depth {
-                                        continue;
-                                    }
-                                    // Execute the (s, t) connection strategy and update L
-                                    let mut pfilm_new = pfilm;
-                                    let mut mis_weight = 0.0;
-                                    let lpath = connect_bdpt(
-                                        scene, &mut lvertices, &mut cvertices, s as usize,
-                                        t as usize, &light_distr, &lti, camera,
-                                        &mut tsampler, &mut pfilm_new, Some(&mut mis_weight));
-                                    debug!(
-                                        "Connect pdpt s: {}, t: {}, Lpath: {}, misWeight: {}",
-                                        s, t, lpath, mis_weight);
-
-                                    if self.visualize_strategies || self.visualize_weights {
-                                        let mut value = Spectrum::default();
-
-                                        if self.visualize_strategies {
-                                            value = if mis_weight == 0.0 { Spectrum::new(0.0) } else { lpath / mis_weight };
+                                        if (s == 1 && t == 1) || depth < 0 || depth > self.max_depth {
+                                            continue;
                                         }
-                                        if self.visualize_weights { value = lpath; }
-                                        if let Some(ref f) =  &weight_films[buffer_index(s as usize, t as usize)] {
-                                            f.add_splat(&pfilm_new, value)
+                                        // Execute the (s, t) connection strategy and update L
+                                        let mut pfilm_new = pfilm;
+                                        let mut mis_weight = 0.0;
+                                        let lpath = connect_bdpt(
+                                            scene, &mut lvertices, &mut cvertices, s as usize,
+                                            t as usize, &light_distr, &lti, camera,
+                                            &mut tsampler, &mut pfilm_new, Some(&mut mis_weight));
+                                        debug!(
+                                            "Connect pdpt s: {}, t: {}, Lpath: {}, misWeight: {}",
+                                            s, t, lpath, mis_weight);
+
+                                        if self.visualize_strategies || self.visualize_weights {
+                                            let mut value = Spectrum::default();
+
+                                            if self.visualize_strategies {
+                                                value = if mis_weight == 0.0 { Spectrum::new(0.0) } else { lpath / mis_weight };
+                                            }
+                                            if self.visualize_weights { value = lpath; }
+                                            if let Some(ref f) = &weight_films[buffer_index(s as usize, t as usize)] {
+                                                f.add_splat(&pfilm_new, value)
+                                            }
                                         }
 
-                                    }
-
-                                    if t != 1 {
-                                        L += lpath;
-                                    } else {
-                                        film.add_splat(&pfilm_new, lpath)
+                                        if t != 1 {
+                                            L += lpath;
+                                        } else if !lpath.is_black() {
+                                            //println!("{:?}", lpath);
+                                            film.add_splat(&pfilm_new, lpath)
+                                        }
                                     }
                                 }
-                            }
-                            debug!("Add film sample pFilm: {}, L: {}, (y: {} )", pfilm, L, L.y());
-                            film_tile.add_sample(&pfilm, L, 1.0);
+                                debug!("Add film sample pFilm: {}, L: {}, (y: {} )", pfilm, L, L.y());
+                                film_tile.add_sample(&pfilm, L, 1.0);
 
-                            if !tsampler.start_next_sample() { break; }
+                                if !tsampler.start_next_sample() { break; }
+                            }
+                            herd.reset()
                         }
                     }
 
@@ -814,6 +818,7 @@ impl Integrator for BDPTIntegrator {
             // Merge film tiles in main thread
             for _ in 0..tiles.len() {
                 let mut tile = recvt.recv().unwrap();
+
                 // Merge image tile into film
                 film.merge_film_tile(&mut tile);
             }
@@ -824,10 +829,8 @@ impl Integrator for BDPTIntegrator {
             if self.visualize_strategies || self.visualize_weights {
                 let inv_sample_count = 1.0 / sampler.samples_per_pixel() as Float;
 
-                for filmopt in weight_films.iter() {
-                    if let Some(f) = filmopt {
-                        f.write_image(inv_sample_count).unwrap();
-                    }
+                for f in weight_films.iter().flatten() {
+                    f.write_image(inv_sample_count).unwrap();
                 }
             }
 
@@ -861,14 +864,15 @@ pub fn generate_camera_subpath<'a, S: Sampler>(
     if max_depth == 0 { return 0; }
     // TODO: ProfilePhase
     // Sample initial ray for camera subpath
+    let time = sampler.get_1d();
+    let plens = sampler.get_2d();
     let csample = CameraSample {
+        plens, time,
         pfilm: *pfilm,
-        plens: sampler.get_2d(),
-        time: sampler.get_1d()
     };
     let mut ray = Ray::default();
     let val = camera.generate_ray_differential(&csample, &mut ray);
-    let beta = Spectrum::new(val);
+    let mut beta = Spectrum::new(val);
     ray.scale_differential(1.0 / (sampler.samples_per_pixel() as Float).sqrt());
 
     // Generate first vertex on camera subpath and start random walk
@@ -882,7 +886,7 @@ pub fn generate_camera_subpath<'a, S: Sampler>(
         {}, pdfdir: {}", ray, beta, pdfpos, pdfdir);
 
     random_walk(
-        scene, ray, sampler, arena, beta,
+        scene, &ray, sampler, arena, &mut beta,
         pdfdir, max_depth - 1,
         TransportMode::Radiance, path)
         + 1
@@ -902,21 +906,23 @@ pub fn generate_light_subpath<'a, S: Sampler>(
     let mut nlight = Normal3f::default();
     let mut pdfpos = 0.0;
     let mut pdfdir = 0.0;
+    let u2 = sampler.get_2d();
+    let u1 = sampler.get_2d();
     let Le = light.sample_le(
-        &sampler.get_2d(), &sampler.get_2d(), time, &mut ray,
+        &u1, &u2, time, &mut ray,
         &mut nlight, &mut pdfpos, &mut pdfdir);
     if pdfpos == 0.0 || pdfdir == 0.0 || Le.is_black() { return 0; }
 
     // Generate first vertex on light subpath and start random walk
     let vertex = Vertex::create_light_ray(light, &ray, nlight, Le, pdfpos * lightpdf);
     path.push(vertex);
-    let beta = Le * nlight.abs_dot_vec(&ray.d) / (lightpdf * pdfpos * pdfdir);
+    let mut beta = Le * nlight.abs_dot_vec(&ray.d) / (lightpdf * pdfpos * pdfdir);
     debug!(
         "Starting light subpath. Ray: {}, Le {}, beta: {}, \
         pdfPos: {}, pdfDir: {}", ray, Le, beta, pdfpos, pdfdir);
     let nvertices = random_walk(
-        scene, ray.clone(), sampler, arena,
-        beta, pdfdir, max_depth - 1,
+        scene, &ray, sampler, arena,
+        &mut beta, pdfdir, max_depth - 1,
         TransportMode::Importance, path);
 
     // Correct subpath sampling densities for infinite area lights
@@ -938,9 +944,10 @@ pub fn generate_light_subpath<'a, S: Sampler>(
 
 
 fn random_walk<'a, S: Sampler>(
-    scene: &Scene, mut ray: Ray, sampler: &mut S,
-    arena: &Member<'a>, mut beta: Spectrum, pdf: Float,
+    scene: &Scene, ray: &Ray, sampler: &mut S,
+    arena: &Member<'a>, beta: &mut Spectrum, pdf: Float,
     max_depth: usize, mode: TransportMode, path: &mut Vec<Vertex<'a>>) -> usize {
+    let mut ray = ray.clone();
     if max_depth == 0 { return  0; }
     let mut bounces = 0;
     // Declare variables for forward and reverse probability densities
@@ -958,7 +965,7 @@ fn random_walk<'a, S: Sampler>(
         let mut isect = SurfaceInteraction::default();
         let fintersection = scene.intersect(&mut ray, &mut isect);
         if let Some(ref med) = ray.medium {
-            beta *= med.sample(&ray, sampler, &mut mi);
+            *beta *= med.sample(&ray, sampler, &mut mi);
         }
 
         if beta.is_black() { break; }
@@ -968,8 +975,7 @@ fn random_walk<'a, S: Sampler>(
 
         if let Some(ref phase) = mi.phase {
             // Record medium interaction in path and compute forward density
-            let vertex = Vertex::create_medium(mi.clone(), beta, pdffwd, prev);
-            path.push(vertex);
+            let vertex = Vertex::create_medium(mi.clone(), *beta, pdffwd, prev);
             bounces += 1;
             if bounces >= max_depth { break; }
 
@@ -979,13 +985,17 @@ fn random_walk<'a, S: Sampler>(
             pdffwd = val;
             pdfrev = val;
             ray = mi.spawn_ray(&wi);
+
+            // Compute reverse area density at preceding vertex
+            path[previdx].pdfrev = vertex.convert_density(pdfrev, prev);
+            path.push(vertex);
         } else {
             // Handle surface interaction for path generation
             if !fintersection {
                 // Capture escaped rays when tracing from the camera
                 if mode == TransportMode::Radiance {
                     let ei = EndpointInteraction::from_ray(&ray);
-                    let vertex = Vertex::create_light_intr(ei, beta, pdffwd);
+                    let vertex = Vertex::create_light_intr(ei, *beta, pdffwd);
                     path.push(vertex);
                     bounces += 1;
                 }
@@ -1001,10 +1011,10 @@ fn random_walk<'a, S: Sampler>(
             }
 
             // Initialize vertex with surface intersection information
-            //let vertex = Vertex::create_surface(isect.cl)
+            let mut vertex = Vertex::create_surface(isect.clone(), *beta, pdffwd, prev);
             bounces += 1;
+
             if bounces >= max_depth {
-                let vertex = Vertex::create_surface(isect, beta, pdffwd, prev);
                 path.push(vertex);
                 break
             } else {
@@ -1019,31 +1029,28 @@ fn random_walk<'a, S: Sampler>(
                     &mut pdffwd, flags, &mut ty);
                 debug!("Random walk sampled dir {} f: {}, pdfFwd: {}", wi, f, pdffwd);
                 if f.is_black() || pdffwd == 0.0 {
-                    let vertex = Vertex::create_surface(isect, beta, pdffwd, prev);
                     path.push(vertex);
                     break;
                 }
 
-                beta *= f * wi.abs_dot_norm(&isect.shading.n) / pdffwd;
+                *beta *= f * wi.abs_dot_norm(&isect.shading.n) / pdffwd;
                 debug!("Random walk beta now {}", beta);
                 pdfrev = bsdf.pdf(&wi, &wo, BxDFType::All as u8);
-                let mut delta = false;
                 if (ty & BxDFType::Specular as u8) != 0 {
-                    delta = true;
+                    vertex.delta = true;
                     pdfrev = 0.0;
                     pdffwd = 0.0
                 }
-                beta *= correct_shading_normal(&isect, &wo, &wi, mode);
+                *beta *= correct_shading_normal(&isect, &wo, &wi, mode);
                 debug!("Random walk beta after shading normal correction {}", beta);
                 ray = isect.spawn_ray(&wi);
-                let mut vertex = Vertex::create_surface(isect, beta, pdffwd, prev);
-                vertex.delta = delta;
-                path.push(vertex);
             }
+
+            // Compute reverse area density at preceding vertex
+            path[previdx].pdfrev = vertex.convert_density(pdfrev, prev);
+            path.push(vertex);
         }
-        // Compute reverse area density at preceding vertex
-        let prev = &path[previdx];
-        path[previdx].pdfrev = path[path.len() - 1].convert_density(pdfrev, prev);
+
     }
 
     bounces
@@ -1064,25 +1071,11 @@ fn mis_weight<'a>(
     // Look up connection vertices and their predecessors
     //let(c, d) = cvertices.split_at_mut(t - 1);
     let mut qs: Option<Vertex>  = if s > 0 {
-        let vert = &mut lvertices[s - 1];
+        let vert = &lvertices[s - 1];
         let intr: Interactions = match vert.intr {
             Interactions::EndpointInteraction(ref e) => e.clone().into(),
             Interactions::MediumInteraction(ref m) => m.clone().into(),
-            Interactions::SurfaceInteraction(ref mut si) => {
-                let s = SurfaceInteraction {
-                    bsdf: si.bsdf.take(),
-                    p: si.p,
-                    n: si.n,
-                    wo: si.wo,
-                    medium_interface: si.medium_interface.clone(),
-                    p_error: si.p_error,
-                    time: si.time,
-                    primitive: si.primitive.clone(),
-                    ..Default::default()
-
-                };
-                s.into()
-            },
+            Interactions::SurfaceInteraction(ref si) => si.clone().into(),
             _ => unreachable!()
         };
         let v = Vertex {
@@ -1099,26 +1092,12 @@ fn mis_weight<'a>(
         None
     };
 
-    let mut pt: Option<Vertex>  = if s > 0 {
-        let vert = &mut cvertices[s - 1];
+    let mut pt: Option<Vertex>  = if t > 0 {
+        let vert = &cvertices[t - 1];
         let intr: Interactions = match vert.intr {
             Interactions::EndpointInteraction(ref e) => e.clone().into(),
             Interactions::MediumInteraction(ref m) => m.clone().into(),
-            Interactions::SurfaceInteraction(ref mut si) => {
-                let s = SurfaceInteraction {
-                    bsdf: si.bsdf.take(),
-                    p: si.p,
-                    n: si.n,
-                    wo: si.wo,
-                    medium_interface: si.medium_interface.clone(),
-                    p_error: si.p_error,
-                    time: si.time,
-                    primitive: si.primitive.clone(),
-                    ..Default::default()
-
-                };
-                s.into()
-            },
+            Interactions::SurfaceInteraction(ref si) => si.clone().into(),
             _ => unreachable!()
         };
 
@@ -1141,18 +1120,9 @@ fn mis_weight<'a>(
     let mut ptminus = if t > 1 { Some(&mut cvertices[t - 2]) } else { None };
 
     // Update sampled vertex for s=1 or t=1 strategy
-    let mut qs_si: Option<BSDF> = None;
-    let mut pt_si: Option<BSDF> = None;
     if s == 1 {
-        if let Interactions::SurfaceInteraction(ref mut si) = qs.as_mut().unwrap().intr {
-            qs_si = si.bsdf.take();
-        }
-
         qs = Some(sampled);
     } else if t == 1 {
-        if let Interactions::SurfaceInteraction(ref mut si) = pt.as_mut().unwrap().intr {
-            pt_si = si.bsdf.take();
-        }
         pt = Some(sampled);
     }
 
@@ -1163,9 +1133,16 @@ fn mis_weight<'a>(
     // Update reverse density of vertex pt t-1
     if let Some(ref mut v) = pt {
         v.pdfrev = if s > 0 {
-            qs.as_ref().unwrap().pdf(scene, Some(qsminus.as_ref().unwrap()), v)
+            if let Some(ref qsminus_ref) = qsminus {
+                qs.as_ref().unwrap().pdf(scene, Some(qsminus_ref), v)
+            } else {
+                qs.as_ref().unwrap().pdf(scene, None, v)
+            }
+
+        } else if let Some(ref ptminus_ref) = ptminus {
+            v.pdf_light_origin(scene, ptminus_ref, lightpdf, lti)
         } else {
-            v.pdf_light_origin(scene, ptminus.as_ref().unwrap(), lightpdf, lti)
+            v.pdfrev
         };
     }
 
@@ -1174,7 +1151,11 @@ fn mis_weight<'a>(
     if let Some(ref mut v) = ptminus {
         ptminus_prev_pdfrev = v.pdfrev;
         v.pdfrev = if s > 0 {
-            pt.as_ref().unwrap().pdf(scene, Some(qs.as_ref().unwrap()), v)
+            if let Some(ref qs_ref) = qs {
+                pt.as_ref().unwrap().pdf(scene, Some(qs_ref), v)
+            } else {
+                pt.as_ref().unwrap().pdf(scene, None, v)
+            }
         } else {
             pt.as_ref().unwrap().pdf_light(scene, v)
         };
@@ -1182,19 +1163,29 @@ fn mis_weight<'a>(
 
     // Update reverse density of vertices pq s-1 and pq s-2
     if let Some(ref mut v) = qs {
-        v.pdfrev = pt.as_ref().unwrap().pdf(scene, Some(ptminus.as_ref().unwrap()), v);
+        if let Some(ptminis_ref) = ptminus {
+            v.pdfrev = pt.as_ref().unwrap().pdf(scene, Some(ptminis_ref), v);
+        } else {
+            v.pdfrev = pt.as_ref().unwrap().pdf(scene, None, v);
+        }
     }
 
     let mut qsminus_prev_pdfrev = 0.0;
     if let Some(ref mut v) = qsminus {
         qsminus_prev_pdfrev = v.pdfrev;
-        v.pdfrev = v.pdf(scene, Some(pt.as_ref().unwrap()), v);
+
+        v.pdfrev = if let Some(ref pt_ref) = pt {
+            qs.as_ref().unwrap().pdf(scene, Some(pt_ref), v)
+        } else {
+            qs.as_ref().unwrap().pdf(scene, None, v)
+        }
     }
 
     // Consider hypothetical connection strategies along the camera subpath
     let mut ri = 1.0;
+    let mut i = t - 1;
 
-    for i in (1..=(t - 1)).rev() {
+    while i > 0 {
         let mut v1 = &cvertices[i];
 
         if i == t - 1 {
@@ -1208,15 +1199,18 @@ fn mis_weight<'a>(
         if !v1.delta && !cvertices[i - 1].delta {
             sumri += ri
         }
+
+        i -= 1;
     }
 
     // Consider hypothetical connection strategies along the light subpath
     ri = 1.0;
+    let mut i = s as isize - 1;
 
-    for i in (1..=(s - 1)).rev() {
-        let mut v1 = &lvertices[i];
+    while i >= 0 {
+        let mut v1 = &lvertices[i as usize];
 
-        if i == s - 1 {
+        if i == s as isize - 1 {
             if let Some(ref v) = qs {
                 v1 = v;
             }
@@ -1225,7 +1219,7 @@ fn mis_weight<'a>(
         ri *= remap0(v1.pdfrev) / remap0(v1.pdffwd);
 
         let delta_light_vertex = if i > 0 {
-            lvertices[i - 1].delta
+            lvertices[(i - 1) as usize].delta
         } else {
             lvertices[0].is_delta_light()
         };
@@ -1233,48 +1227,17 @@ fn mis_weight<'a>(
         if !v1.delta && !delta_light_vertex {
             sumri += ri
         }
+
+        i -= 1;
     }
 
     // Reset original vertex data
-
     if s > 1 {
-        lvertices[s - 2].pdffwd = qsminus_prev_pdfrev;
+        lvertices[s - 2].pdfrev = qsminus_prev_pdfrev;
     }
 
     if t > 1 {
-        cvertices[t - 2].pdffwd = ptminus_prev_pdfrev;
-    }
-
-    // Reset lightVertices[s - 1] Surface interaction BSDF if it was changed
-    if s > 0 {
-        if s == 1 {
-            if let Interactions::SurfaceInteraction(ref mut si) = &mut lvertices[s - 1].intr {
-                si.bsdf = qs_si;
-            }
-        } else if let Interactions::SurfaceInteraction(ref mut si) = &mut lvertices[s - 1].intr {
-            if let Some(ref mut v) = qs {
-                if let Interactions::SurfaceInteraction(ref mut si2) = v.intr {
-                    si.bsdf = si2.bsdf.take();
-                }
-            }
-
-        }
-    }
-
-    // Reset cameraVertices[t - 1] Surface interaction BSDF if it was changed
-    if t > 0 {
-        if t == 1 {
-            if let Interactions::SurfaceInteraction(ref mut si) = &mut cvertices[s - 1].intr {
-                si.bsdf = pt_si;
-            }
-        } else if let Interactions::SurfaceInteraction(ref mut si) = &mut cvertices[s - 1].intr {
-            if let Some(ref mut v) = pt {
-                if let Interactions::SurfaceInteraction(ref mut si2) = v.intr {
-                    si.bsdf = si2.bsdf.take();
-                }
-            }
-
-        }
+        cvertices[t - 2].pdfrev = ptminus_prev_pdfrev;
     }
 
     1.0 / (1.0 + sumri)
@@ -1316,7 +1279,7 @@ pub fn connect_bdpt<'a, S: Sampler>(
                // Initialize dynamically sampled vertex and L for t=1 case
                sampled = Vertex::create_camera_intr(camera, &vis.p1(), Wi / pdf);
                L = qs.beta * qs.f(&sampled, TransportMode::Importance) * sampled.beta;
-               if qs.is_onsurface() { L *= wi.dot_norm(&qs.ns()); }
+               if qs.is_onsurface() { L *= wi.abs_dot_norm(&qs.ns()); }
                assert!(!L.has_nans());
                // Only check visibility after we know that the path would
                // make a non-zero contribution.
@@ -1395,7 +1358,7 @@ pub fn create_bdpt_intergrator(
 
     if (vis_strat || vis_weights) && maxdepth > 5 {
         warn!(
-            "visualizestrategies/visualizeweights was enabled,\
+            "visualizestrategies/visualizeweights was enabled, \
             limiting maxdepth to 5");
         maxdepth = 5;
     }
