@@ -15,7 +15,7 @@ use crate::textures::windy::WindyTexture;
 use crate::textures::checkerboard::{Checkerboard3DTexture, Checkerboard2DTexture};
 use crate::core::geometry::vector::{Vector2f, Vector3f};
 use crate::core::geometry::point::{Point2f, Point3f};
-use crate::core::pbrt::{Float, INV_PI, INV2_PI, PI, lerp, clamp};
+use crate::core::pbrt::{Float, INV_PI, INV2_PI, PI, lerp, clamp, log2};
 use crate::core::transform::Transform;
 use crate::core::geometry::geometry::{spherical_theta, spherical_phi};
 use crate::core::spectrum::{Spectrum, RGBSpectrum, SampledSpectrum};
@@ -317,15 +317,15 @@ pub fn lanczos(mut x: Float, tau: Float) -> Float {
 }
 
 pub fn noise(x: Float, y: Float, z: Float) -> Float {
-    let (mut ix, mut iy, mut iz) = (
-        x.floor() as usize,
-        y.floor() as usize,
-        z.floor() as usize);
 
-    let (dx, dy, dz) = (
-        x - ix as Float,
-        y - iy as Float,
-        z - iz as Float);
+    let mut ix = x.floor() as usize;
+    let mut iy = y.floor() as usize;
+    let mut iz = z.floor() as usize;
+
+
+    let dx = x - ix as Float;
+    let dy = y - iy as Float;
+    let dz = z - iz as Float;
 
     // Compute gradient weights
     ix &= NOISE_PERM_SIZE - 1;
@@ -341,11 +341,10 @@ pub fn noise(x: Float, y: Float, z: Float) -> Float {
     let w111 = grad(ix + 1, iy + 1, iz + 1, dx - 1.0, dy - 1.0, dz - 1.0);
 
     // Compute trilinear interpolation of weights
-    let (wx, wy, wz) = (
-        noise_weight(dx),
-        noise_weight(dy),
-        noise_weight(dz));
 
+    let wx = noise_weight(dx);
+    let wy = noise_weight(dy);
+    let wz = noise_weight(dz);
     let x00 = lerp(wx, w000, w100);
     let x10 = lerp(wx, w010, w110);
     let x01 = lerp(wx, w001, w101);
@@ -381,20 +380,20 @@ pub fn fbm(
     omega: Float, max_octaves: usize) -> Float {
     // Compute number of octaves for antialiased FBm
     let len2 = dpdx.length_squared().max(dpdy.length_squared());
-    let n = clamp(-1.0 - 0.5 * len2.log2(), 0.0, max_octaves as Float);
+    let n = clamp(-1.0 - 0.5 * log2(len2), 0.0, max_octaves as Float);
     let nint = n.floor() as usize;
 
     // Compute sum of octaves of noise for fbm
     let (mut sum, mut lambda, mut o) = (0.0, 1.0, 1.0);
 
     for _i in 0..nint {
-        sum += o + noisep(*p * lambda);
+        sum += o * noisep(*p * lambda);
         lambda *= 1.99;
         o *= omega;
     }
 
     let npartial = n - nint as Float;
-    sum += o + smooth_step(0.3, 0.7, npartial) * noisep(*p * lambda);
+    sum += o * smooth_step(0.3, 0.7, npartial) * noisep(*p * lambda);
 
     sum
 }
