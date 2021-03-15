@@ -25,7 +25,7 @@ impl<T: From<Float>> Texture<T> for WindyTexture  {
         let wstrength = fbm(&(p * 0.1), &(dpdx * 0.1), &(dpdy * 0.1), 0.5, 3 );
         let wheight = fbm(&p, &dpdx, &dpdy, 0.5, 6);
 
-        T::from((wstrength * wheight).abs())
+        T::from(wstrength.abs() * wheight)
     }
 }
 
