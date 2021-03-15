@@ -1,4 +1,9 @@
 # pbrt-rust
+
+[![Build Status](https://github.com/alexmeli100/pbrt-rust/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/alexmeli100/pbrt-rust/actions)
+[![Github License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/alexmeli100/pbrt-rust/blob/master/LICENSE-APACHE)
+[![Github License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/alexmeli100/pbrt-rust/blob/master/LICENSE-MIT)
+
 Another implementation of PBRT in Rust based on the PBRT book and the C++ version by Matt Pharr, Wenzel Jacob:
 
 http://www.pbrt.org
