@@ -35,9 +35,7 @@ impl RandomSampler {
 }
 
 impl Sampler for RandomSampler {
-    fn samples_per_pixel(&self) -> u64 {
-        unimplemented!()
-    }
+    get_sampler_data!();
 
     fn start_pixel(&mut self, p: &Point2i) {
         for i in 0..self.sample_array_1d.len() {
@@ -48,9 +46,9 @@ impl Sampler for RandomSampler {
 
         for i in 0..self.sample_array_2d.len() {
             for j in 0..self.sample_array_2d[i].len() {
-                self.sample_array_2d[i][j] = Point2f::new(
-                    self.rng.uniform_float(),
-                    self.rng.uniform_float());
+                let x = self.rng.uniform_float();
+                let y = self.rng.uniform_float();
+                self.sample_array_2d[i][j] = Point2f::new(x, y)
             }
         }
 
@@ -67,8 +65,10 @@ impl Sampler for RandomSampler {
     fn get_2d(&mut self) -> Point2f {
         // TODO: ProfilePhase
         assert!(self.current_pixel_sample_index < self.samples_per_pixel);
+        let x = self.rng.uniform_float();
+        let y = self.rng.uniform_float();
 
-        Point2f::new(self.rng.uniform_float(), self.rng.uniform_float())
+        Point2f::new(x, y)
     }
 
     get_camera_sample_default!();
