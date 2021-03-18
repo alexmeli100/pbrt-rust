@@ -771,6 +771,7 @@ impl Integrator for BDPTIntegrator {
                                         if (s == 1 && t == 1) || depth < 0 || depth > self.max_depth {
                                             continue;
                                         }
+
                                         // Execute the (s, t) connection strategy and update L
                                         let mut pfilm_new = pfilm;
                                         let mut mis_weight = 0.0;
@@ -977,7 +978,10 @@ fn random_walk<'a, S: Sampler>(
             // Record medium interaction in path and compute forward density
             let vertex = Vertex::create_medium(mi.clone(), *beta, pdffwd, prev);
             bounces += 1;
-            if bounces >= max_depth { break; }
+            if bounces >= max_depth {
+                path.push(vertex);
+                break;
+            }
 
             // Sample direction and compute reverse density at preceding vertex
             let mut wi = Vector3f::default();
