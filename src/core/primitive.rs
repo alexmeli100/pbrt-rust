@@ -138,13 +138,13 @@ impl Primitive for GeometricPrimitive {
         isect.primitive = Some(p);
         assert!(isect.n.dot(&isect.shading.n) >= 0.0, "n: {}, shanding_n: {}", isect.n, isect.shading.n);
 
-        let m = match self.medium_interface.is_medium_transition() {
-            true => self.medium_interface.clone(),
-            _    => MediumInterface::new(r.medium.clone())
+        let m = if self.medium_interface.is_medium_transition() {
+            self.medium_interface.clone()
+        } else {
+            MediumInterface::new(r.medium.clone())
         };
 
         isect.medium_interface = Some(m);
-
         true
     }
 
