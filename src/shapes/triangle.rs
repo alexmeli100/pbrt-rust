@@ -727,7 +727,7 @@ pub fn create_trianglemesh_shape(
     let mut alphatex: Option<Arc<TextureFloat>> = None;
     let texname = params.find_texture("alpha", "".to_owned());
 
-    if texname.is_empty() {
+    if !texname.is_empty() {
         if let Some(tex) = ftextures.get(&texname) {
             alphatex = Some(tex.clone());
         } else {
@@ -740,7 +740,7 @@ pub fn create_trianglemesh_shape(
     let mut shadow_alphatex: Option<Arc<TextureFloat>> = None;
     let texname = params.find_texture("shadowalpha", "".to_owned());
 
-    if texname.is_empty() {
+    if !texname.is_empty() {
         if let Some(tex) = ftextures.get(&texname) {
             shadow_alphatex = Some(tex.clone());
         } else {
