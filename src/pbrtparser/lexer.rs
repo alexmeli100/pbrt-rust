@@ -27,6 +27,7 @@ lazy_static! {
     static ref LOOKAT               : Regex = Regex::new(r"^LookAt"            ).unwrap();
     static ref MATERIAL             : Regex = Regex::new(r"^Material"          ).unwrap();
     static ref MAKENAMEDMATERIAL    : Regex = Regex::new(r"^MakeNamedMaterial" ).unwrap();
+    static ref MAKENAMEDMEDIUM      : Regex = Regex::new(r"^MakeNamedMedium"   ).unwrap();
     static ref NAMEDMATERIAL        : Regex = Regex::new(r"^NamedMaterial"     ).unwrap();
     static ref MEDIUMINTERFACE      : Regex = Regex::new(r"^MediumInterface"   ).unwrap();
     static ref OBJECTBEGIN          : Regex = Regex::new(r"^ObjectBegin"       ).unwrap();
@@ -137,6 +138,7 @@ impl<'input> Lexer<'input> {
             LOOKAT              => |_| Tokens::LookAt,
             MATERIAL            => |_| Tokens::Material,
             MAKENAMEDMATERIAL   => |_| Tokens::MakeNamedMaterial,
+            MAKENAMEDMEDIUM     => |_| Tokens::MakeNamedMedium,
             NAMEDMATERIAL       => |_| Tokens::NamedMaterial,
             MEDIUMINTERFACE     => |_| Tokens::MediumInterface,
             OBJECTBEGIN         => |_| Tokens::ObjectBegin,
