@@ -37,7 +37,7 @@ impl Medium for HomogeneousMedium {
         // Todo: ProfilePhase
         // Sample a channel and distance along the ray;
         let channel = std::cmp::min(
-            sampler.get_1d() as usize * Spectrum::n(),
+            (sampler.get_1d() * Spectrum::n() as Float) as usize,
             Spectrum::n() - 1);
         let dist = -((1.0 - sampler.get_1d()).ln()) / self.sigma_t[channel];
         let t = (dist / ray.d.length()).min(ray.t_max);
