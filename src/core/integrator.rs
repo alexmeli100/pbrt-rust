@@ -284,7 +284,8 @@ pub trait SamplerIntegrator: Integrator + Send + Sync {
 
         let pb = Arc::new(ProgressBar::new(tiles.len() as _));
         pb.set_style(ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] [{wide_bar}] {percent}% [{pos}/{len}] ({eta})"));
+            .template("[{elapsed_precise}] [{wide_bar}] {percent}% [{pos}/{len} tiles] ({eta})")
+            .progress_chars("#>-"));
         set_progress_bar(Some(Arc::downgrade(&pb)));
 
         let (sendt, recvt) = bounded(tiles.len());
@@ -309,7 +310,7 @@ pub trait SamplerIntegrator: Integrator + Send + Sync {
                 let p1 = Point2i::new(x0, y0);
                 let p2 = Point2i::new(x1, y1);
                 let tile_bounds = Bounds2i::from_points(&p1, &p2);
-                println!("Starting image tile {}", tile_bounds);
+                info!("Starting image tile {}", tile_bounds);
 
                 // Get FilmTile for tile
                 let mut film_tile = film.get_film_tile(&tile_bounds);
