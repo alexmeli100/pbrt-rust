@@ -53,11 +53,15 @@ pub trait Interaction {
 
     fn get_medium_vec(&self, w: &Vector3f) -> Option<Arc<Mediums>> {
         if w.dot_norm(&self.n()) > 0.0 {
-            self.medium_interface()
-                .map_or_else(|| None, |m| m.outside)
+            if let Some(ref med_interface) = self.medium_interface() {
+                med_interface.outside.clone()
+            } else {
+                None
+            }
+        } else if let Some(ref med_interface) = self.medium_interface() {
+            med_interface.inside.clone()
         } else {
-            self.medium_interface()
-                .map_or_else(|| None, |m| m.inside)
+            None
         }
     }
 
