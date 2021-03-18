@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::any::Any;
 use log::warn;
 use std::boxed::Box;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use lazy_static::lazy_static;
 use crate::core::mipmap::{MIPMap, ImageWrap, Clampable};
 use crate::core::interaction::SurfaceInteraction;
@@ -20,7 +20,7 @@ use crate::core::transform::Transform;
 use crate::core::paramset::TextureParams;
 
 lazy_static! {
-    static ref TEXTURES: Mutex<BTreeMap<TexInfo, Box<dyn Any + Send + Sync>>> = Mutex::new(BTreeMap::new());
+    static ref TEXTURES: Mutex<HashMap<TexInfo, Box<dyn Any + Send + Sync>>> = Mutex::new(HashMap::new());
 }
 
 pub fn clear_cache() {
@@ -32,25 +32,29 @@ pub fn clear_cache() {
 pub type ImageTextureFloat = ImageTexture<Float>;
 pub type ImageTextureRGB = ImageTexture<RGBSpectrum>;
 
+#[derive(Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
+pub enum TextureType { Float, RGB }
 
-#[derive(PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct TexInfo {
     filename     : String,
     do_trilinear : bool,
     max_aniso    : OrderedFloat<Float>,
     scale        : OrderedFloat<Float>,
     gamma        : bool,
-    wrap_mode    : ImageWrap
+    wrap_mode    : ImageWrap,
+    ttype        : TextureType
 }
 
 impl TexInfo {
     pub fn new(
         filename: String, do_trilinear: bool,
-        max_aniso: Float, scale: Float,
-        gamma: bool, wrap_mode: ImageWrap) -> Self {
+        ttype: TextureType, max_aniso: Float,
+        scale: Float, gamma: bool,
+        wrap_mode: ImageWrap) -> Self {
         Self {
             filename, do_trilinear,
-            gamma, wrap_mode,
+            gamma, wrap_mode, ttype,
             max_aniso: OrderedFloat::from(max_aniso),
             scale: OrderedFloat::from(scale)
         }
@@ -98,23 +102,26 @@ where Tmemory: num::Zero + Clone + Copy + ConvertFrom<RGBSpectrum> + Mul<Float, 
 {
     pub fn new(
         mapping: TextureMapping2Ds, file: &str, do_trilinear: bool,
-        max_aniso: Float, wrap: ImageWrap, scale: Float, gamma: bool) -> Self {
-        let mipmap = ImageTexture::<Tmemory>::get_texture(file, do_trilinear, max_aniso, wrap, scale, gamma);
+        ttype: TextureType, max_aniso: Float, wrap: ImageWrap,
+        scale: Float, gamma: bool) -> Self {
+        let mipmap = ImageTexture::<Tmemory>::get_texture(file, ttype, do_trilinear, max_aniso, wrap, scale, gamma);
 
         Self { mipmap, mapping }
     }
 
     fn get_texture(
-        filename: &str, do_trilinear: bool,
-        max_aniso: Float, wrap: ImageWrap,
-        scale: Float, gamma: bool) -> Arc<MIPMap<Tmemory>>  {
+        filename: &str, ttype: TextureType, do_trilinear: bool,
+        max_aniso: Float, wrap: ImageWrap, scale: Float,
+        gamma: bool) -> Arc<MIPMap<Tmemory>>  {
         let texinfo = TexInfo::new(
-            filename.to_string(), do_trilinear,
+            filename.to_string(), do_trilinear, ttype,
             max_aniso, scale, gamma, wrap);
 
         let c = TEXTURES.lock();
         let mut cache = c.unwrap();
         let m= cache.get(&texinfo);
+
+        //println!("{:?}", texinfo);
 
         if m.is_some() {
             let mip = m.as_ref().unwrap()
@@ -192,7 +199,8 @@ pub fn create_image_float(t2w: &Transform, tp: &mut TextureParams) -> Option<Arc
     let gamma = tp.find_bool("gamma", ext);
 
     let img = ImageTexture::<Float>::new(
-        map, &filename, trilerp, max_aniso,
+        map, &filename, trilerp,
+        TextureType::Float, max_aniso,
         mode, scale, gamma).into();
 
     Some(Arc::new(img))
@@ -218,7 +226,8 @@ pub fn create_image_spectrum(t2w: &Transform, tp: &mut TextureParams) -> Option<
 
     let img: TextureSpec = ImageTexture::<RGBSpectrum>::new(
         map, &filename, trilerp,
-        max_aniso, mode, scale, gamma).into();
+        TextureType::RGB, max_aniso,
+        mode, scale, gamma).into();
 
     Some(Arc::new(img))
 }
