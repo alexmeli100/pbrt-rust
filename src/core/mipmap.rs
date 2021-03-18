@@ -48,7 +48,7 @@ fn initialize_weightlut() -> [Float; WEIGHT_LUT_SIZE] {
     wl
 }
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Hash)]
 pub enum ImageWrap { Repeat, Black, Clamp }
 
 #[derive(Default, Copy, Clone)]
