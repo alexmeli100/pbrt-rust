@@ -98,6 +98,7 @@ use crate::materials::substrate::create_substrate_material;
 use crate::materials::kdsubsurface::create_kdsubsurface_material;
 use crate::materials::uber::create_uber_material;
 use crate::materials::subsurface::create_subsurface_material;
+use crate::core::fileutil::{absolute_path, resolve_filename};
 
 const MAX_TRANSFORMS: usize = 2;
 const START_TRANSFORM_BITS: usize = 1 << 0;
@@ -393,7 +394,7 @@ impl GraphicsState {
 
         if !outside.is_empty() {
             match opts.named_media.get(outside) {
-                Some(media) => m.inside = Some(media.clone()),
+                Some(media) => m.outside = Some(media.clone()),
                 _ => error!("Named medium \"{}\" undefined", outside)
             }
         }
@@ -718,7 +719,7 @@ fn make_medium(name: &str, params: &ParamSet, m2w: &Transform) -> Option<Arc<Med
     sigs = params.find_one_spectrum("sigma_s", sigs) * scale;
 
     let m = match name {
-        "homogenous"    => Some(Arc::new(HomogeneousMedium::new(&siga, &sigs, g).into())),
+        "homogeneous"    => Some(Arc::new(HomogeneousMedium::new(&siga, &sigs, g).into())),
         "heterogeneous" => {
             let mut nitems = 0;
             let data = params.find_float("density", &mut nitems).unwrap_or_default();
@@ -1195,6 +1196,7 @@ impl API {
     }
 
     pub fn include(&mut self, name: &str) -> anyhow::Result<()> {
+        let name = absolute_path(&resolve_filename(name));
         pbrtparser::parse(name, self)
     }
 
@@ -1243,6 +1245,7 @@ impl API {
         self.graphics_state.current_inside_medium = inside.to_owned();
         self.graphics_state.current_outside_medium = outside.to_owned();
         self.render_options.have_scattering_media = true;
+
 
         if self.opts.cat || self.opts.to_ply {
             println!("{:indent$} MediumInterface \"{}\" \"{}\"\n", "", inside, outside, indent=self.indent_count);
@@ -1522,6 +1525,7 @@ impl API {
             let mtl = self.graphics_state.get_materialfor_shape(params, &self.render_options);
             params.report_unused();
             let mi = self.graphics_state.create_medium_interface(&self.render_options);
+            //println!("inside: {}, outside: {}", mi.inside.is_some(), mi.outside.is_some());
             prims = Vec::with_capacity(shapes.len());
 
             for s in shapes.iter() {
@@ -1563,6 +1567,7 @@ impl API {
             let mtl = self.graphics_state.get_materialfor_shape(params, &self.render_options);
             params.report_unused();
             let mi = self.graphics_state.create_medium_interface(&self.render_options);
+            println!("inside: {}, outside: {}", mi.inside.is_some(), mi.outside.is_some());
             prims = Vec::with_capacity(shapes.len());
 
             shapes.iter().for_each(|s| {
