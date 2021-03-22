@@ -1,4 +1,4 @@
-use crate::core::texture::{TextureMapping2Ds, Texture, TextureMapping2D, TextureFloat, get_mapping2d, TextureSpec, UVMapping2D};
+use crate::core::texture::{TextureMapping2Ds, Texture, TextureMapping2D, TextureFloat, get_mapping2d, TextureSpec};
 use std::sync::Arc;
 use std::any::Any;
 use log::warn;

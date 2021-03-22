@@ -16,7 +16,7 @@ use crate::core::light::Light;
 use crate::core::primitive::Primitive;
 use crate::core::medium::{PhaseFunction, Medium};
 use crate::core::material::TransportMode;
-use crate::core::reflection::{BxDFType, BSDF};
+use crate::core::reflection::BxDFType;
 use crate::core::scene::Scene;
 use std::hash::{Hash, Hasher};
 use std::collections::HashMap;

@@ -5,7 +5,7 @@ use crossbeam::crossbeam_channel::bounded;
 use indicatif::{ProgressBar, ProgressStyle};
 use crate::core::camera::{Cameras, Camera};
 use crate::core::sampler::{Samplers, Sampler};
-use crate::core::geometry::bounds::{Bounds2i, Bounds3i};
+use crate::core::geometry::bounds::Bounds2i;
 use bumpalo_herd::Member;
 use crate::core::geometry::ray::{Ray, RayDifferential};
 use crate::core::interaction::{SurfaceInteraction, Interactions, Interaction};

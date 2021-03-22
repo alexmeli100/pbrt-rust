@@ -205,7 +205,7 @@ MakeNamedMedium: PBRTCommands = {
 }
 
 NamedMaterial: PBRTCommands = {
-    "NamedMaterial" <Str> => PBRTCommands::NamedMaterial((<>))
+    "NamedMaterial" <Str> => PBRTCommands::NamedMaterial(<>)
 }
 
 MediumInterface: PBRTCommands = {
