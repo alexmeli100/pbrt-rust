@@ -570,9 +570,7 @@ pub fn sobol_sample_float(mut a: u64, dimension: usize, scramble: u32) -> Float 
 
 //pub const inverse_radical_inverse
 
-pub fn radical_inverse(base_index: usize, n: u64) -> Float {
-    generate_radicals!()
-}
+generate_radicals!();
 
 generate_scambled_radicals!();
 

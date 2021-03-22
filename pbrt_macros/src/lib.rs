@@ -96,12 +96,14 @@ pub fn generate_radicals(_input: TokenStream) -> TokenStream {
     let primes: Vec<usize> = PRIMES[1..].iter().copied().collect();
 
     let expanded = quote! {
-        match base_index {
-            0 => reverse_bits64(n) as Float * hexf32!("0x1.0p-64"),
-            #(
-                #indices => radical_inverse_specialized::<#primes>(n),
-            )*
-            _ => panic!("Base {} is >= 1024, the limit of radical_inverse", base_index)
+        pub fn radical_inverse(base_index: usize, n: u64) -> Float {
+            match base_index {
+                0 => reverse_bits64(n) as Float * hexf::hexf32!("0x1.0p-64"),
+                #(
+                    #indices => radical_inverse_specialized::<#primes>(n),
+                )*
+                _ => panic!("Base {} is >= 1024, the limit of radical_inverse", base_index)
+            }
         }
     };
 
