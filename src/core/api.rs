@@ -720,7 +720,7 @@ fn make_medium(name: &str, params: &ParamSet, m2w: &Transform) -> Option<Arc<Med
 
     let m = match name {
         "homogeneous"    => Some(Arc::new(HomogeneousMedium::new(&siga, &sigs, g).into())),
-        "heterogeneous" => {
+        "heterogeneous"  => {
             let mut nitems = 0;
             let data = params.find_float("density", &mut nitems).unwrap_or_default();
             if data.is_empty() {

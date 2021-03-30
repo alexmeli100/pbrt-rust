@@ -30,7 +30,7 @@ bumpalo = "3.4.0"
 bumpalo-herd = "0.1.1"
 lazy_static = "1.4.0"
 crossbeam = "0.7"
-hexf = "0.1.0"
+hexf = "0.2.1"
 anyhow = "1.0"
 log = "0.4"
 fern = { version = "0.6", features = ["colored"] }
