@@ -34,7 +34,11 @@ impl Default for Pixel {
         Self {
             xyz: [0.0; 3],
             filter_weight_sum: 0.0,
-            splat_xyz: [AtomicFloat::default(), AtomicFloat::default(), AtomicFloat::default()],
+            splat_xyz: [
+                AtomicFloat::default(),
+                AtomicFloat::default(),
+                AtomicFloat::default()
+            ],
             _pad: 0.0
         }
     }
@@ -92,7 +96,7 @@ impl Film {
             full_resolution: *resolution,
             diagonal: diagonal * 0.001,
             filter: filt,
-            filename: filename.to_owned(),
+            filename,
             scale,
             max_sample_luminance,
             cropped_pixel_bounds: crop_pixel_bounds,

@@ -7,7 +7,6 @@ use anyhow::Result;
 use fern::colors::{ColoredLevelConfig, Color};
 use pbrt_rust::pbrtparser::pbrtparser::pbrt_parse;
 use fern::Output;
-use std::io::Write;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "pbrt-rust", version = "0.1", about = "Parse a PBRT scene description file and render it")]
@@ -94,7 +93,7 @@ fn setup_logging(verbose: bool, logdir: PathBuf, stderr: bool) -> Result<()> {
                 if let Some(pb) = get_progress_bar() {
                     pb.println(record.args().to_string());
                 } else {
-                    writeln!(std::io::stderr(), "{}", record.args()).ok();
+                    println!("{}", record.args());
                 }
             })
 

@@ -66,10 +66,7 @@ impl SPPMIntegrator {
             camera.film().cropped_pixel_bounds.area()
         };
 
-        Self {
-            camera, niterations, photons_per_iteration,
-            max_depth, initial_search_radius, write_frequency
-        }
+        Self { camera, initial_search_radius, niterations, max_depth, photons_per_iteration, write_frequency }
     }
 }
 
@@ -245,11 +242,6 @@ impl Integrator for SPPMIntegrator {
                         bsdfs[offset as usize] = bsdf;
                         let pixel = &mut pixels[offset as usize];
 
-                        // if iter == 199 {
-                        //     println!("{:?}", ld);
-                        // }
-                        //println!("{:?}", vp.beta);
-
                         pixel.ld += ld;
                         pixel.vp = vp;
                     }
@@ -364,9 +356,6 @@ impl Integrator for SPPMIntegrator {
                             camera.shutter_open(), camera.shutter_close());
                         haltondim += 5;
 
-                        // if index == 3195 {
-                        //     println!("true");
-                        // }
                         // Generate photonRay from light source and initialize beta
                         let mut photon_ray = Ray::default();
                         let mut nlight = Normal3f::default();
@@ -422,8 +411,6 @@ impl Integrator for SPPMIntegrator {
                                     }
                                 }
                             }
-
-                            //info!("Finished photon iteration {}", index);
 
                             // Sample new photon ray direction
 
@@ -516,7 +503,6 @@ impl Integrator for SPPMIntegrator {
                             &pixels[(y - pbounds.p_min.y as usize) * (x1 - x0) + (x - x0)];
                         let mut L = pixel.ld / (iter + 1) as Float;
                         L += pixel.tau / (Np as Float * PI * pixel.radius * pixel.radius);
-                        //println!("{:?}", pixel.tau);
                         image[offset] = L;
                         offset += 1;
                     }

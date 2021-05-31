@@ -140,9 +140,13 @@ pub struct HairMaterial {
 
 impl HairMaterial {
     pub fn new(
-        sigma_a: Option<Arc<TextureSpec>>, color: Option<Arc<TextureSpec>>,
-        eumelanin: Option<Arc<TextureFloat>>, phemelanin: Option<Arc<TextureFloat>>,
-        eta: Arc<TextureFloat>, beta_m: Arc<TextureFloat>, beta_n: Arc<TextureFloat>,
+        sigma_a: Option<Arc<TextureSpec>>,
+        color: Option<Arc<TextureSpec>>,
+        eumelanin: Option<Arc<TextureFloat>>,
+        phemelanin: Option<Arc<TextureFloat>>,
+        eta: Arc<TextureFloat>,
+        beta_m: Arc<TextureFloat>,
+        beta_n: Arc<TextureFloat>,
         alpha: Arc<TextureFloat>) -> Self {
         Self {
             sigma_a, color, eumelanin, phemelanin,
@@ -241,10 +245,7 @@ impl HairBSDF {
         let sigma_a = *sig;
         let bx_type = BxDFType::Glossy as u8 | BxDFType::Reflection as u8 | BxDFType::Transmission as u8;
 
-        Self {
-            h, gammao, eta, sigma_a, betan, betam,
-            v, s, cos2k_alpha, sin2k_alpha, bx_type
-        }
+        Self { h, gammao, eta, sigma_a, betam, betan, v, s, sin2k_alpha, cos2k_alpha, bx_type }
 
     }
 
@@ -543,6 +544,7 @@ impl Display for HairBSDF {
 // Utility functions
 #[inline(always)]
 fn sqr(v: Float) -> Float { v * v }
+
 
 fn pow(v: Float, n: isize) -> Float {
     assert!(n > 0, "Power can't be negative");

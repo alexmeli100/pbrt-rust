@@ -4,6 +4,7 @@
 #![allow(incomplete_features)]
 #![feature(const_evaluatable_checked)]
 #![feature(const_generics)]
+#![feature(const_fn_trait_bound)]
 
 // lints
 #![allow(non_snake_case)]
