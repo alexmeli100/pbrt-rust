@@ -465,7 +465,7 @@ impl TransformCache {
         if tcached.is_none() {
 
             let tr = self.arena.alloc(Arc::new(*t));
-            TransformCache::insert(&mut self.table, &mut self.table_occupancy, tr);
+            self.insert(&mut self.table_occupancy, tr);
             return tr.clone();
         }
 
@@ -483,21 +483,21 @@ impl TransformCache {
 
     }
 
-    fn insert(table: &mut Vec<Option<Arc<Transform>>>, occupancy: &mut usize, tnew: &Arc<Transform>) {
+    fn insert(&mut self, occupancy: &mut usize, tnew: &Arc<Transform>) {
         *occupancy += 1;
-        if *occupancy == table.len() / 2 {
-            TransformCache::grow(table);
+        if *occupancy == self.table.len() / 2 {
+            self.grow();
         }
 
-        let base_offset= TransformCache::hash(tnew) & (table.len() as u64 - 1);
+        let base_offset= TransformCache::hash(tnew) & (self.table.len() as u64 - 1);
         let mut nprobes = 0;
 
         loop {
             // Quadratic probing
-            let offset = (base_offset + nprobes / 2 + nprobes * nprobes / 2) & (table.len() as u64 - 1);
+            let offset = (base_offset + nprobes / 2 + nprobes * nprobes / 2) & (self.table.len() as u64 - 1);
 
-            if table[offset as usize].is_none() {
-                table[offset as usize] = Some(tnew.clone());
+            if self.table[offset as usize].is_none() {
+                self.table[offset as usize] = Some(tnew.clone());
                 return;
             }
 
@@ -505,13 +505,13 @@ impl TransformCache {
         }
     }
 
-    fn grow(table: &mut Vec<Option<Arc<Transform>>>) {
-        let mut new_table: Vec<Option<Arc<Transform>>> = vec![None; 2 * table.len()];
+    fn grow(&mut self) {
+        let mut new_table: Vec<Option<Arc<Transform>>> = vec![None; 2 * self.table.len()];
         info!("Growing transform cache hash table to {}", new_table.capacity());
-        let size = table.len();
+        let size = self.table.len();
 
         // Insert current elements in new_table
-        for entry in table.iter_mut() {
+        for entry in self.table.iter_mut() {
             if entry.is_none() {
                 continue;
             }
@@ -532,7 +532,7 @@ impl TransformCache {
             }
         }
 
-        std::mem::swap(table, &mut new_table)
+        std::mem::swap(&mut self.table, &mut new_table)
     }
 }
 
